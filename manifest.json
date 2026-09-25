@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "id": "foamy.clock",
+  "name": "Foamy Clock",
+  "version": "1.0.0",
+  "author": "foamrider",
+  "description": "Configurable clock, calendar and local Evolution agenda",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Clock",
+    "description": "Configurable clock, calendar and local Evolution agenda",
+    "category": "Time",
+    "allowMultiple": false,
+    "defaults": {
+      "language": "system",
+      "locale": "",
+      "format": "ddd d MMM '' HH:mm",
+      "formatAlt": "d MMMM 'W'ww yyyy",
+      "verticalFormat": "HH\n—\nmm",
+      "verticalFormatAlt": "dd\nMMM\n'W'ww\n''yy",
+      "weekStartDay": "locale",
+      "timeFormat": "24-hour",
+      "showSeconds": true,
+      "showTimeZone": true,
+      "agendaEnabled": true,
+      "agendaRefreshMinutes": 30,
+      "calendarApp": "gnome-calendar",
+      "showEventLocations": true
+    },
+    "schema": [
+      {
+        "key": "language",
+        "type": "enum",
+        "label": "Language",
+        "defaultValue": "system",
+        "options": [
+          "system",
+          "nb",
+          "en"
+        ]
+      },
+      {
+        "key": "locale",
+        "type": "string",
+        "label": "Date locale",
+        "defaultValue": ""
+      },
+      {
+        "key": "format",
+        "type": "string",
+        "label": "Bar format",
+        "defaultValue": "ddd d MMM '' HH:mm"
+      },
+      {
+        "key": "formatAlt",
+        "type": "string",
+        "label": "Alternate format",
+        "defaultValue": "d MMMM 'W'ww yyyy"
+      },
+      {
+        "key": "verticalFormat",
+        "type": "string",
+        "label": "Vertical format",
+        "defaultValue": "HH\n—\nmm"
+      },
+      {
+        "key": "verticalFormatAlt",
+        "type": "string",
+        "label": "Vertical alternate",
+        "defaultValue": "dd\nMMM\n'W'ww\n''yy"
+      },
+      {
+        "key": "weekStartDay",
+        "type": "enum",
+        "label": "Week starts on",
+        "defaultValue": "locale",
+        "options": [
+          "locale",
+          "monday",
+          "tuesday",
+          "wednesday",
+          "thursday",
+          "friday",
+          "saturday",
+          "sunday"
+        ]
+      },
+      {
+        "key": "timeFormat",
+        "type": "enum",
+        "label": "Time format",
+        "defaultValue": "24-hour",
+        "options": [
+          "24-hour",
+          "12-hour"
+        ]
+      },
+      {
+        "key": "showSeconds",
+        "type": "boolean",
+        "label": "Show seconds",
+        "defaultValue": true
+      },
+      {
+        "key": "showTimeZone",
+        "type": "boolean",
+        "label": "Show timezone",
+        "defaultValue": true
+      },
+      {
+        "key": "agendaEnabled",
+        "type": "boolean",
+        "label": "Show agenda",
+        "defaultValue": true
+      },
+      {
+        "key": "agendaRefreshMinutes",
+        "type": "integer",
+        "label": "Refresh interval (min)",
+        "defaultValue": 30,
+        "min": 1,
+        "max": 1440,
+        "step": 1
+      },
+      {
+        "key": "calendarApp",
+        "type": "string",
+        "label": "Calendar app",
+        "defaultValue": "gnome-calendar"
+      },
+      {
+        "key": "showEventLocations",
+        "type": "boolean",
+        "label": "Show event locations",
+        "defaultValue": true
+      }
+    ]
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.clock"
+  },
+  "license": "MIT"
+}
