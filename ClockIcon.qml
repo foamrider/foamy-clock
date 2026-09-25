@@ -5,6 +5,7 @@ Image {
   id: root
   property string name: "settings"
   readonly property var paths: ({
+    "refresh-cw": "<path d=\"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8\"></path><path d=\"M21 3v5h-5\"></path><path d=\"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16\"></path><path d=\"M8 16H3v5\"></path>",
     "app-window": '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 8h20M6 4v4"/>',
     "check": '<path d="m20 6-11 11-5-5"/>',
     "arrow-left": '<path d="m12 19-7-7 7-7M5 12h14"/>',

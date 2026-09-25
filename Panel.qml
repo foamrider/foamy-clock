@@ -1154,19 +1154,18 @@ Panel {
                   text: root.launchError || (root.agendaEnabled ? root.agendaUpdatedText : "")
                   color: root.secondaryForeground; font.pixelSize: Style.space(11)
                 }
-                PanelActionButton {
+                ClockAction {
                   id: refreshButton
                   visible: root.agendaEnabled
                   anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                  size: Style.space(26); fontSize: Style.space(14)
-                  iconText: "󰑐"; fontFamily: root.iconFontFamily; foreground: root.secondaryForeground
+                  width: Style.space(26); height: Style.space(26)
+                  iconSize: Style.space(15)
+                  iconName: "refresh-cw"
+                  foreground: root.secondaryForeground
                   tooltipText: root.agendaLoading ? root.localText("Oppdaterer kalendere", "Refreshing calendars") : root.localText("Oppdater kalendere", "Refresh calendars")
                   enabled: !root.agendaLoading
+                  spinning: root.opened && !root.editingSettings && root.agendaLoading
                   onClicked: root.refreshAgenda(true)
-                  RotationAnimator on rotation {
-                    running: root.opened && root.agendaLoading
-                    from: 0; to: 360; duration: 800; loops: Animation.Infinite
-                  }
                 }
               }
               Item { width: 1; height: Style.space(4) }
