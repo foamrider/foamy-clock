@@ -41,6 +41,8 @@ Panel {
   onAgendaEnabledChanged: {
     // Drop visible data immediately. In-flight results are ignored when disabled.
     root.calendarDates = ({})
+    root.overviewState = "missing"
+    if (!agendaEnabled && agendaProcess.running) agendaProcess.signal(15)
     root.resetAgendaView()
     root.lastAgendaRangeRefreshMs = 0
     if (agendaEnabled) Qt.callLater(root.requestAgendaDate)
@@ -75,9 +77,9 @@ Panel {
   // loaded first so a slow account never blanks the panel.
   property var agendaEvents: []
   property var calendarDates: ({})
-  readonly property int maxEventDots: 5
   property string agendaState: "loading"
   property string agendaMessage: ""
+  property string overviewState: "missing"
   property string agendaDateKey: ""
   property int selectedCalendars: 0
   property double lastAgendaRefreshMs: 0
@@ -87,17 +89,26 @@ Panel {
   property string agendaProcessRangeStartKey: ""
   property string agendaProcessRangeEndKey: ""
   property string cacheProcessDateKey: ""
+  property string cacheProcessRangeStartKey: ""
+  property string cacheProcessRangeEndKey: ""
+  property string lastAgendaDateKey: ""
+  property bool agendaForceRefresh: false
   property bool agendaPayloadApplied: false
-  property bool cachePayloadApplied: false
+  property bool agendaOverviewApplied: false
   property double lastAgendaRangeRefreshMs: 0
   property string lastAgendaRangeKey: ""
   readonly property int agendaRefreshIntervalMs: preference("agendaRefreshMinutes") * 60000
   readonly property bool agendaLoading: agendaProcess.running || cacheProcess.running
-  readonly property date agendaRangeStartDate: new Date(viewYear, viewMonth - 1, 1)
-  readonly property date agendaRangeEndDate: new Date(viewYear, viewMonth + 2, 1)
+  readonly property date agendaRangeStartDate: new Date(weeks[0].days[0].year, weeks[0].days[0].month, weeks[0].days[0].day)
+  readonly property date agendaRangeEndDate: new Date(agendaRangeStartDate.getFullYear(), agendaRangeStartDate.getMonth(), agendaRangeStartDate.getDate() + 42)
   readonly property string agendaRangeStartKey: Model.keyForDate(agendaRangeStartDate)
   readonly property string agendaRangeEndKey: Model.keyForDate(agendaRangeEndDate)
   readonly property string agendaRangeKey: agendaRangeStartKey + ":" + agendaRangeEndKey
+  onAgendaRangeKeyChanged: {
+    root.calendarDates = ({})
+    root.overviewState = "missing"
+    Qt.callLater(root.requestAgendaDate)
+  }
   readonly property string agendaDateLabel: selectedDateIsToday
     ? localText("I dag", "Today")
     : displayLocale.toString(selectedDate, "ddd d MMM")
@@ -199,11 +210,18 @@ Panel {
 
   function requestAgendaDate() {
     if (!root.agendaEnabled) return
-    if (cacheProcess.running || agendaProcess.running) return
+    if (cacheProcess.running || agendaProcess.running) {
+      // The helper handles SIGTERM and reaps its worker before exiting.
+      if (agendaProcess.running && (root.agendaProcessDateKey !== root.selectedDateKey
+          || root.agendaProcessRangeStartKey !== root.agendaRangeStartKey
+          || root.agendaProcessRangeEndKey !== root.agendaRangeEndKey)) agendaProcess.signal(15)
+      return
+    }
 
-    root.resetAgendaView()
-    root.cachePayloadApplied = false
+    if (root.agendaDateKey !== root.selectedDateKey) root.resetAgendaView()
     root.cacheProcessDateKey = root.selectedDateKey
+    root.cacheProcessRangeStartKey = root.agendaRangeStartKey
+    root.cacheProcessRangeEndKey = root.agendaRangeEndKey
     cacheProcess.running = true
   }
 
@@ -224,100 +242,72 @@ Panel {
       root.requestAgendaDate()
       return
     }
-    if (!force && root.lastAgendaRangeKey === root.agendaRangeKey
+    if (!force && root.lastAgendaRefreshMs > 0 && root.lastAgendaDateKey === root.selectedDateKey
+        && root.lastAgendaRangeKey === root.agendaRangeKey
         && root.lastAgendaRangeRefreshMs > 0
         && Date.now() - root.lastAgendaRangeRefreshMs < root.agendaRefreshIntervalMs) return
 
+    root.agendaForceRefresh = force
     root.agendaPayloadApplied = false
+    root.agendaOverviewApplied = false
     root.agendaProcessDateKey = root.selectedDateKey
     root.agendaProcessRangeStartKey = root.agendaRangeStartKey
     root.agendaProcessRangeEndKey = root.agendaRangeEndKey
-    if (root.agendaEvents.length === 0) root.agendaState = "loading"
+    if (root.agendaEvents.length === 0 && root.lastAgendaRefreshMs <= 0) root.agendaState = "loading"
     agendaProcess.running = true
   }
 
-  function applyAgendaPayload(raw, fromCache, expectedDateKey) {
+  function applyAgendaPayload(raw, fromCache, expectedDateKey, rangeStart, rangeEnd) {
     if (!root.agendaEnabled) return false
     try {
+      // The Python bridge bounds bytes before SplitParser sees them. These
+      // checks also keep unexpected protocol changes out of the UI model.
+      if (String(raw).length > 262144) return false
       var payload = JSON.parse(String(raw || ""))
-      if (!payload || !Array.isArray(payload.events)) throw new Error("invalid calendar payload")
-      if (String(payload.date || "") !== String(expectedDateKey)
-          || String(expectedDateKey) !== root.selectedDateKey) return false
-      if (String(payload.state || "") === "missing") return false
-
-      var incomingState = String(payload.state || "error")
-      if (!fromCache && root.agendaCached && root.agendaEvents.length > 0
-          && (incomingState === "error" || incomingState === "partial")) {
-        root.agendaState = "cached"
-        root.agendaMessage = incomingState === "partial"
-          ? String(payload.message || "Some calendars could not refresh") + " · showing cached events"
-          : "Showing cached calendar data"
-        return true
+      if (!payload || ["ok", "partial", "error", "missing"].indexOf(payload.state) < 0) return false
+      if (payload.kind === "grid") {
+        if (payload.date !== rangeStart || payload.rangeEnd !== rangeEnd
+            || rangeStart !== root.agendaRangeStartKey || rangeEnd !== root.agendaRangeEndKey) return false
+        if (!payload.dates || Object.keys(payload.dates).length > 42) return false
+        if (payload.state !== "missing") {
+          root.calendarDates = payload.dates
+          root.overviewState = payload.state
+          if (!fromCache) root.agendaOverviewApplied = true
+        }
+        return false
       }
-
+      if (payload.kind !== "day" || !Array.isArray(payload.events) || payload.events.length > 100) return false
+      if (payload.date !== expectedDateKey || expectedDateKey !== root.selectedDateKey) return false
+      if (payload.state === "missing") return false
       root.agendaEvents = payload.events
-      root.agendaState = incomingState
-      root.agendaMessage = String(payload.message || "")
-      root.agendaDateKey = String(payload.date)
-      root.selectedCalendars = Math.max(0, Number(payload.selectedCalendars) || 0)
-      root.lastAgendaRefreshMs = Math.max(0, Number(payload.updatedAt) || 0) * 1000
-      root.agendaCached = fromCache || payload.cached === true || incomingState === "cached"
+      root.agendaState = payload.state
+      root.agendaDateKey = payload.date
+      root.selectedCalendars = payload.selectedCalendars
+      root.lastAgendaRefreshMs = payload.updatedAt * 1000
+      root.agendaCached = fromCache || payload.cached
       return true
     } catch (error) {
       return false
     }
   }
 
-  function eventsForDate(key) {
-    if (key === root.agendaDateKey) return root.agendaEvents
-    var day = root.calendarDates[key]
-    return day && Array.isArray(day.events) ? day.events : []
-  }
-
-  function calendarDots(events) {
-    var seen = new Set()
-    var dots = []
-    for (var event of events) {
-      // The helper prefixes event IDs with the EDS source UID, so calendars
-      // with identical names or colors still get separate dots.
-      var calendarId = event.id.substring(0, event.id.indexOf(":"))
-      if (seen.has(calendarId)) continue
-      seen.add(calendarId)
-      dots.push(event)
-      if (dots.length === root.maxEventDots) break
-    }
-    return dots
-  }
-
-  // Read the shared range cache once, rather than starting a query per cell.
-  FileView {
-    id: calendarCache
-    path: root.agendaEnabled ? (Quickshell.env("XDG_CACHE_HOME").trim() || (Quickshell.env("HOME") + "/.cache"))
-      + "/foamy-clock/agenda-v1.json" : ""
-    watchChanges: root.agendaEnabled
-    onFileChanged: reload()
-    onLoaded: {
-      try {
-        var cache = JSON.parse(text())
-        if (cache.version !== 1 || !cache.dates || typeof cache.dates !== "object")
-          throw new Error("Invalid calendar cache")
-        root.calendarDates = cache.dates
-      } catch (error) {
-        root.calendarDates = ({})
-        console.warn("Calendar dots: " + error)
-      }
-    }
-    onLoadFailed: root.calendarDates = ({})
+  function dotsForDate(key) {
+    var dots = root.calendarDates[key]
+    return Array.isArray(dots) ? dots : []
   }
 
   function agendaMessageText() {
     if (root.agendaState === "error") return root.localText("Kalenderdata er utilgjengelige", "Calendar data is unavailable")
-    if (root.agendaState === "partial") return root.localText("Noen kalendere kunne ikke oppdateres", "Some calendars could not refresh")
+    if (root.agendaState === "partial") return root.localText("Noen avtaler kan mangle. Åpne kalenderen for full oversikt.", "Some events may be missing. Open calendar for the full view.")
     if (root.agendaState === "cached") return root.localText("Viser lagrede kalenderdata", "Showing cached calendar data")
     return root.agendaMessage
   }
 
   function updatedAgoText() {
+    if (root.agendaState === "error") return localText("Kalender utilgjengelig", "Calendar unavailable")
+    if (root.agendaState === "partial" || root.overviewState === "partial" || root.overviewState === "error")
+      return localText("Delvis oppdatert · åpne kalender", "Partial update · open calendar")
+    if (root.agendaState === "loading") return localText("Oppdaterer…", "Updating…")
     if (root.lastAgendaRefreshMs <= 0) return ""
     var elapsedMinutes = Math.max(0, Math.floor((root.now.getTime() - root.lastAgendaRefreshMs) / 60000))
     if (elapsedMinutes === 0) return localText("Oppdatert nå", "Updated just now")
@@ -378,9 +368,6 @@ Panel {
     var next = Model.stepMonth(viewYear, viewMonth, delta)
     root.viewYear = next.year
     root.viewMonth = next.month
-    // Warm the surrounding months as soon as they are browsed. If another
-    // range is still loading, its completion queues this newest range.
-    Qt.callLater(function() { root.refreshAgenda(false) })
   }
 
   function moveYear(delta) {
@@ -464,21 +451,26 @@ Panel {
       root.helperPath,
       "--cached",
       "--date",
-      root.cacheProcessDateKey
+      root.cacheProcessDateKey,
+      "--range-start", root.cacheProcessRangeStartKey,
+      "--range-end", root.cacheProcessRangeEndKey
     ]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.cachePayloadApplied = root.applyAgendaPayload(
-        text, true, root.cacheProcessDateKey)
+    stdout: SplitParser {
+      onRead: data => {
+        root.applyAgendaPayload(data, true, root.cacheProcessDateKey,
+          root.cacheProcessRangeStartKey, root.cacheProcessRangeEndKey)
+      }
     }
     onExited: Qt.callLater(function() {
       if (!root.agendaEnabled) return
-      if (root.cacheProcessDateKey !== root.selectedDateKey) root.requestAgendaDate()
+      if (root.cacheProcessDateKey !== root.selectedDateKey
+          || root.cacheProcessRangeStartKey !== root.agendaRangeStartKey
+          || root.cacheProcessRangeEndKey !== root.agendaRangeEndKey) root.requestAgendaDate()
       else {
         // A cache miss still belongs to this date; mark it current so the
         // following live refresh does not loop back through the cache reader.
         root.agendaDateKey = root.selectedDateKey
-        root.refreshAgenda(!root.cachePayloadApplied)
+        root.refreshAgenda(false)
       }
     })
   }
@@ -487,9 +479,8 @@ Panel {
     id: agendaProcess
     command: [
       "timeout",
-      // Slow remote calendars can need a minute or two to wake up. This runs
-      // off the UI thread and cached rows remain visible while it waits.
-      "150s",
+      // Each worker has a 45-second deadline; this also bounds the bridge.
+      "100s",
       "nice",
       "-n",
       "10",
@@ -500,39 +491,42 @@ Panel {
       "--range-start",
       root.agendaProcessRangeStartKey,
       "--range-end",
-      root.agendaProcessRangeEndKey
+      root.agendaProcessRangeEndKey,
+      "--max-age", String(root.agendaForceRefresh ? 0 : root.agendaRefreshIntervalMs / 1000)
     ]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.agendaPayloadApplied = root.applyAgendaPayload(
-        text, false, root.agendaProcessDateKey)
+    stdout: SplitParser {
+      onRead: data => {
+        if (root.applyAgendaPayload(data, false, root.agendaProcessDateKey,
+            root.agendaProcessRangeStartKey, root.agendaProcessRangeEndKey)) root.agendaPayloadApplied = true
+      }
     }
     onExited: function(exitCode) {
       if (!root.agendaEnabled) return
-      // Also reload after the first refresh, when no cache existed to watch.
-      calendarCache.reload()
       var completedRangeKey = root.agendaProcessRangeStartKey
         + ":" + root.agendaProcessRangeEndKey
-      root.lastAgendaRangeKey = completedRangeKey
-      root.lastAgendaRangeRefreshMs = Date.now()
+      // An interrupted request must not suppress the replacement request.
+      if (root.agendaPayloadApplied && root.agendaOverviewApplied) {
+        root.lastAgendaDateKey = root.agendaProcessDateKey
+        root.lastAgendaRangeKey = completedRangeKey
+        root.lastAgendaRangeRefreshMs = Date.now()
+      }
 
-      if (root.agendaProcessDateKey !== root.selectedDateKey) {
+      if (root.agendaProcessDateKey !== root.selectedDateKey || completedRangeKey !== root.agendaRangeKey
+          || root.agendaDateKey !== root.selectedDateKey) {
         Qt.callLater(function() { root.requestAgendaDate() })
         return
       }
 
-      if (exitCode !== 0 && !root.agendaPayloadApplied) {
+      if (!root.agendaPayloadApplied) {
         if (root.agendaEvents.length > 0) {
-          root.agendaState = "cached"
-          root.agendaMessage = "Showing cached calendar data"
+          root.agendaState = "partial"
         } else {
           root.agendaState = "error"
           root.agendaMessage = "Calendar data is unavailable"
         }
       }
 
-      if (completedRangeKey !== root.agendaRangeKey)
-        Qt.callLater(function() { root.refreshAgenda(true) })
+      if (!root.agendaOverviewApplied) root.overviewState = "partial"
     }
   }
 
@@ -910,8 +904,7 @@ Panel {
                           Rectangle {
                             id: dayCell
                             required property var modelData
-                            readonly property var events: root.eventsForDate(modelData.key)
-                            readonly property var dots: root.calendarDots(events)
+                            readonly property var dots: root.dotsForDate(modelData.key)
                             readonly property int dotCount: dots.length
                             readonly property bool selected: modelData.key === root.selectedDateKey
                             width: root.cellWidth; height: root.cellHeight
@@ -967,8 +960,10 @@ Panel {
                               onClicked: root.selectDate(modelData.year, modelData.month, modelData.day)
                             }
                             PanelToolTip {
-                              visible: dayMouse.containsMouse && dayCell.events.length > 0
-                              text: dayCell.events.length + root.localText(dayCell.events.length === 1 ? " avtale" : " avtaler", dayCell.events.length === 1 ? " event" : " events")
+                              visible: dayMouse.containsMouse && (dayCell.dotCount > 0 || root.overviewState !== "ok")
+                              text: root.overviewState === "ok"
+                                ? root.localText("Velg dagen for å se avtaler", "Select this date to see events")
+                                : root.localText("Kalenderoversikten kan være ufullstendig", "Calendar overview may be incomplete")
                               fontFamily: root.contentFontFamily
                             }
                           }
@@ -995,18 +990,22 @@ Panel {
                 }
                 ClockLabel {
                   anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                  text: root.agendaEvents.length + root.localText(root.agendaEvents.length === 1 ? " avtale" : " avtaler", root.agendaEvents.length === 1 ? " event" : " events")
+                  text: root.agendaState === "loading" || root.agendaState === "error" ? ""
+                    : root.agendaState === "partial" ? root.agendaEvents.length + root.localText(" vist", " shown")
+                    : root.agendaEvents.length + root.localText(root.agendaEvents.length === 1 ? " avtale" : " avtaler", root.agendaEvents.length === 1 ? " event" : " events")
                   color: root.secondaryForeground; font.pixelSize: Style.space(11)
                 }
               }
-              Flickable {
+              ListView {
                 id: agendaScroll
                 width: parent.width
                 height: Math.min(contentHeight, Math.max(0,
                   (panel.availableCardHeight > 0 ? panel.availableCardHeight : body.fixedHeight + contentHeight)
                   - panel.verticalContentInset - body.fixedHeight))
                 contentWidth: width
-                contentHeight: agendaContent.implicitHeight
+                model: root.agendaEvents
+                spacing: agendaBlock.spacing
+                reuseItems: true
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
                 flickableDirection: Flickable.VerticalFlick
@@ -1031,83 +1030,70 @@ Panel {
                   background: Item {}
                 }
 
-                Column {
-                  id: agendaContent
-                  width: parent.width - (agendaScroll.interactive ? Style.space(10) : 0)
-                  spacing: agendaBlock.spacing
-
-                  ClockLabel {
-                    visible: root.agendaEvents.length === 0
-                    width: parent.width
-                    topPadding: Style.space(12); bottomPadding: Style.space(12)
-                    wrapMode: Text.WordWrap
-                    text: root.agendaState === "loading" ? root.localText("Henter avtaler…", "Loading events…")
-                      : root.agendaState === "error" ? root.agendaMessageText()
-                      : root.selectedCalendars > 0 ? root.localText("Ingen avtaler denne dagen", "No events on this date")
-                      : root.localText("Ingen kalendere valgt", "No calendars selected")
-                    color: root.agendaState === "error" ? Color.urgent : root.secondaryForeground
-                    font.pixelSize: Style.space(12)
+                header: ClockLabel {
+                  visible: root.agendaEvents.length === 0
+                  height: visible ? implicitHeight : 0
+                  width: agendaScroll.width
+                  topPadding: Style.space(12); bottomPadding: Style.space(12)
+                  wrapMode: Text.WordWrap
+                  text: root.agendaState === "loading" ? root.localText("Henter avtaler…", "Loading events…")
+                    : root.agendaState === "error" || root.agendaState === "partial" ? root.agendaMessageText()
+                    : root.selectedCalendars > 0 ? root.localText("Ingen avtaler denne dagen", "No events on this date")
+                    : root.localText("Ingen kalendere valgt", "No calendars selected")
+                  color: root.agendaState === "error" ? Color.urgent : root.secondaryForeground
+                  font.pixelSize: Style.space(12)
+                }
+                delegate: Rectangle {
+                  id: eventRow
+                  required property var modelData
+                  readonly property string agendaStatus: root.eventState(modelData)
+                  width: agendaScroll.width - (agendaScroll.interactive ? Style.space(10) : 0)
+                  height: Style.space(60)
+                  radius: Style.space(8)
+                  color: eventMouse.containsMouse || agendaStatus === "ongoing" ? root.selectedCardColor : root.cardColor
+                  Rectangle {
+                    anchors.left: parent.left; anchors.leftMargin: Style.space(11)
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Style.space(3); height: parent.height - Style.space(22); radius: width / 2
+                    color: eventRow.modelData.color || Color.accent
                   }
-                  Repeater {
-                    model: root.agendaEvents
-                    Rectangle {
-                      id: eventRow
-                      required property var modelData
-                      readonly property string agendaStatus: root.eventState(modelData)
-                      width: parent.width; height: Style.space(60)
-                      radius: Style.space(8)
-                      color: eventMouse.containsMouse || agendaStatus === "ongoing" ? root.selectedCardColor : root.cardColor
-                      Rectangle {
-                        anchors.left: parent.left; anchors.leftMargin: Style.space(11)
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: Style.space(3); height: parent.height - Style.space(22); radius: width / 2
-                        color: eventRow.modelData.color || Color.accent
-                      }
-                      ClockLabel {
-                        id: eventTime
-                        anchors.left: parent.left; anchors.leftMargin: Style.space(24)
-                        anchors.top: parent.top; anchors.topMargin: Style.space(12)
-                        width: Style.space(root.preference("timeFormat") === "12-hour" ? 72 : 58)
-                        text: eventRow.modelData.allDay ? root.localText("Hele dagen", "All day")
-                          : root.displayLocale.toString(new Date(Number(eventRow.modelData.start) * 1000), root.timeFormat)
-                        color: root.secondaryForeground; font.pixelSize: Style.space(11)
-                        elide: Text.ElideRight
-                      }
-                      Column {
-                        anchors.left: eventTime.right; anchors.leftMargin: Style.space(8)
-                        anchors.right: parent.right; anchors.rightMargin: Style.space(11)
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: Style.space(3)
-                        ClockLabel {
-                          width: parent.width; elide: Text.ElideRight
-                          text: eventRow.modelData.title || root.localText("Avtale uten tittel", "Untitled event")
-                          color: eventRow.agendaStatus === "past" ? root.secondaryForeground : root.contentForeground
-                        }
-                        ClockLabel {
-                          width: parent.width; elide: Text.ElideRight
-                          text: (eventRow.agendaStatus === "ongoing" ? root.localText("Nå · ", "Now · ") : "")
-                            + root.eventTimeText(eventRow.modelData) + " · " + root.eventDetails(eventRow.modelData)
-                          color: root.secondaryForeground; font.pixelSize: Style.space(11)
-                        }
-                      }
-                      MouseArea {
-                        id: eventMouse
-                        anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                        onClicked: root.openCalendar()
-                      }
-                      PanelToolTip {
-                        visible: eventMouse.containsMouse
-                        text: (eventRow.modelData.title || root.localText("Avtale uten tittel", "Untitled event"))
-                          + "\n" + root.eventTimeText(eventRow.modelData) + " · " + root.eventDetails(eventRow.modelData)
-                        fontFamily: root.contentFontFamily
-                      }
+                  ClockLabel {
+                    id: eventTime
+                    anchors.left: parent.left; anchors.leftMargin: Style.space(24)
+                    anchors.top: parent.top; anchors.topMargin: Style.space(12)
+                    width: Style.space(root.preference("timeFormat") === "12-hour" ? 72 : 58)
+                    text: eventRow.modelData.allDay ? root.localText("Hele dagen", "All day")
+                      : root.displayLocale.toString(new Date(Number(eventRow.modelData.start) * 1000), root.timeFormat)
+                    color: root.secondaryForeground; font.pixelSize: Style.space(11)
+                    elide: Text.ElideRight
+                  }
+                  Column {
+                    anchors.left: eventTime.right; anchors.leftMargin: Style.space(8)
+                    anchors.right: parent.right; anchors.rightMargin: Style.space(11)
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Style.space(3)
+                    ClockLabel {
+                      width: parent.width; elide: Text.ElideRight
+                      text: eventRow.modelData.title || root.localText("Avtale uten tittel", "Untitled event")
+                      color: eventRow.agendaStatus === "past" ? root.secondaryForeground : root.contentForeground
+                    }
+                    ClockLabel {
+                      width: parent.width; elide: Text.ElideRight
+                      text: (eventRow.agendaStatus === "ongoing" ? root.localText("Nå · ", "Now · ") : "")
+                        + root.eventTimeText(eventRow.modelData) + " · " + root.eventDetails(eventRow.modelData)
+                      color: root.secondaryForeground; font.pixelSize: Style.space(11)
                     }
                   }
-                  ClockLabel {
-                    visible: root.agendaState === "partial"
-                    width: parent.width; wrapMode: Text.WordWrap
-                    text: root.agendaMessageText()
-                    color: Color.accent; font.pixelSize: Style.space(12)
+                  MouseArea {
+                    id: eventMouse
+                    anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: root.openCalendar()
+                  }
+                  PanelToolTip {
+                    visible: eventMouse.containsMouse
+                    text: (eventRow.modelData.title || root.localText("Avtale uten tittel", "Untitled event"))
+                      + "\n" + root.eventTimeText(eventRow.modelData) + " · " + root.eventDetails(eventRow.modelData)
+                    fontFamily: root.contentFontFamily
                   }
                 }
               }
@@ -1147,12 +1133,27 @@ Panel {
                   }
                 }
                 ClockLabel {
+                  id: updateStatus
                   anchors.left: openCalendarButton.right; anchors.leftMargin: Style.space(12)
                   anchors.right: refreshButton.left; anchors.rightMargin: Style.space(7)
                   anchors.verticalCenter: parent.verticalCenter
                   horizontalAlignment: Text.AlignRight; elide: Text.ElideRight
                   text: root.launchError || (root.agendaEnabled ? root.agendaUpdatedText : "")
                   color: root.secondaryForeground; font.pixelSize: Style.space(11)
+                  MouseArea {
+                    id: updateStatusMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: root.agendaState === "partial" || root.overviewState === "partial" || root.overviewState === "error" ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    onClicked: if (cursorShape === Qt.PointingHandCursor) root.openCalendar()
+                  }
+                  PanelToolTip {
+                    visible: updateStatusMouse.containsMouse
+                    text: root.agendaState === "partial" || root.overviewState === "partial" || root.overviewState === "error"
+                      ? root.localText("Noen avtaler kan mangle. Åpne kalenderen for full oversikt.", "Some events may be missing. Open calendar for the full view.")
+                      : updateStatus.text
+                    fontFamily: root.contentFontFamily
+                  }
                 }
                 ClockAction {
                   id: refreshButton
