@@ -96,7 +96,7 @@ class CalendarEventsTest(unittest.TestCase):
             def get_month(self): return self.day.month
             def get_day(self): return self.day.day
         start = datetime(2026, 8, 24, tzinfo=timezone.utc)
-        component = SimpleNamespace(get_status=lambda: "cancelled" if cancelled else "ok", get_summary=lambda: title, get_location=lambda: "Room", get_uid=lambda: "event")
+        component = SimpleNamespace(get_status=lambda: "cancelled" if cancelled else "ok", get_summary=lambda: title, get_location=lambda: "Room", get_uid=lambda: f"event-{self.visited}")
         self.visited = 0
         def generate(_start, _end, _cancel, callback, _data):
             for _ in range(count):
@@ -125,19 +125,125 @@ class CalendarEventsTest(unittest.TestCase):
         self.assertTrue(CALENDAR_EVENTS.valid_payload(payload))
         self.assertLess(len(CALENDAR_EVENTS.encode(payload)), CALENDAR_EVENTS.MAX_RESPONSE_BYTES)
 
-    def test_grid_does_not_read_titles_and_bounds_occurrence_work(self):
-        class Unreadable:
-            def __len__(self): raise AssertionError("grid read summary")
-        markers, error = self.fetch(200000, "grid", title=Unreadable())
-        self.assertEqual(len(markers), 1)
-        self.assertEqual(self.visited, CALENDAR_EVENTS.MAX_OCCURRENCES + 1)
-        self.assertEqual(error, "limited")
+    def test_control_characters_cannot_expand_shell_messages(self):
+        events, _ = self.fetch(100, title="a\x01" * 128)
+        self.assertTrue(all("\x01" not in event["title"] for event in events))
+        payload = self.payload()
+        payload["events"] = events
+        self.assertTrue(CALENDAR_EVENTS.valid_payload(payload))
+        self.assertLess(len(CALENDAR_EVENTS.encode(payload)), CALENDAR_EVENTS.MAX_RESPONSE_BYTES)
 
-    def test_full_grid_source_can_finish_early_without_partial(self):
-        markers, error = self.fetch(200000, "grid", span=42)
-        self.assertEqual(len(markers), 42)
-        self.assertEqual(self.visited, 1)
+    def test_month_occurrence_work_is_bounded(self):
+        month, error = self.fetch(200000, "month")
+        self.assertEqual(len(month["events"]), 100)
+        self.assertEqual(self.visited, CALENDAR_EVENTS.MAX_OCCURRENCES + 1)
+        self.assertEqual(month["state"], "partial")
+        self.assertTrue(CALENDAR_EVENTS.valid_payload(month))
+
+    def test_spanning_event_is_stored_once_for_all_dates(self):
+        month, error = self.fetch(1, "month", span=42)
+        self.assertEqual(len(month["events"]), 1)
+        self.assertEqual(len(month["dates"]), 42)
+        self.assertTrue(all(day["events"] == [0] for day in month["dates"].values()))
+        self.assertEqual(month["state"], "ok")
         self.assertEqual(error, "")
+
+    def test_busy_day_does_not_mark_other_days_incomplete(self):
+        month, _ = self.fetch(101, "month")
+        self.assertEqual(month["dates"]["2026-08-24"]["state"], "partial")
+        self.assertEqual(month["dates"]["2026-08-25"]["state"], "ok")
+        self.assertEqual(month["dates"]["2026-08-25"]["events"], [])
+
+    def test_month_has_total_event_and_encoded_byte_budgets(self):
+        builder = CALENDAR_EVENTS.MonthBuilder(date(2026, 8, 1), date(2026, 9, 12))
+        keys = list(builder.payload["dates"])
+        for i in range(4200):
+            builder.add(self.event(id=f"event-{i}", title="🙂" * 256, location="🙂" * 128, calendar="🙂" * 80), [keys[i % 42]])
+        month = builder.finish()
+        self.assertLessEqual(len(month["events"]), CALENDAR_EVENTS.MAX_MONTH_EVENTS)
+        self.assertLessEqual(len(CALENDAR_EVENTS.encode(month)), CALENDAR_EVENTS.MAX_MONTH_BYTES)
+        self.assertEqual(month["state"], "partial")
+        self.assertTrue(CALENDAR_EVENTS.valid_payload(month))
+        with patch("builtins.print") as output:
+            CALENDAR_EVENTS.emit_view(month)
+        lines = [call.args[0].encode() for call in output.call_args_list]
+        self.assertLessEqual(len(lines), 12)
+        self.assertTrue(all(len(line) <= CALENDAR_EVENTS.MAX_RESPONSE_BYTES for line in lines))
+        self.assertLess(sum(map(len, lines)), CALENDAR_EVENTS.MAX_MONTH_BYTES + 65536)
+
+    def test_month_cache_evicts_by_bytes_before_entry_limit(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "cache.json"
+            for month in range(1, 7):
+                start = date(2026, month, 1)
+                builder = CALENDAR_EVENTS.MonthBuilder(start, start + timedelta(days=42))
+                keys = list(builder.payload["dates"])
+                for i in range(1000):
+                    builder.add(self.event(id=f"event-{i}", title="🙂" * 256, location="🙂" * 128, calendar="🙂" * 80), [keys[i % 42]])
+                CALENDAR_EVENTS.store_view(builder.finish(), path)
+                self.assertLessEqual(path.stat().st_size, CALENDAR_EVENTS.MAX_CACHE_BYTES)
+                if month == 4:
+                    self.assertEqual(len(CALENDAR_EVENTS.read_cache(path)["views"]), 4)
+            views = CALENDAR_EVENTS.read_cache(path)["views"]
+            self.assertLess(len(views), 6)
+            self.assertEqual(list(views.values())[-1]["date"], "2026-06-01")
+
+    def test_invalid_month_references_and_size_are_rejected(self):
+        month = CALENDAR_EVENTS.base_payload("month", date(2026, 8, 1), date(2026, 9, 12), "ok")
+        month["dates"]["2026-08-01"]["events"] = [0]
+        self.assertFalse(CALENDAR_EVENTS.valid_payload(month))
+        month["events"] = [self.event()]
+        self.assertTrue(CALENDAR_EVENTS.valid_payload(month))
+        month["dates"]["2026-08-01"]["events"] = [0, 0]
+        self.assertFalse(CALENDAR_EVENTS.valid_payload(month))
+        flood = "import os; os.write(1, b'x' * (3 * 1024 * 1024))"
+        self.assertIsNone(CALENDAR_EVENTS.run_bounded_worker([sys.executable, "-c", flood], max_bytes=CALENDAR_EVENTS.MAX_MONTH_BYTES))
+
+    def test_failed_dates_keep_cached_events_while_good_dates_update(self):
+        start, end = date(2026, 8, 24), date(2026, 8, 26)
+        old = CALENDAR_EVENTS.MonthBuilder(start, end)
+        old.add(self.event(), ["2026-08-24", "2026-08-25"])
+        cached = old.finish()
+        for day in cached["dates"].values(): day["updatedAt"] = 100
+        fresh = CALENDAR_EVENTS.base_payload("month", start, end, "ok")
+        fresh["dates"]["2026-08-24"].update(state="partial", complete=False)
+        fresh["dates"]["2026-08-25"]["updatedAt"] = 200
+        result = CALENDAR_EVENTS.merge_month(fresh, cached)
+        self.assertEqual(result["dates"]["2026-08-24"]["events"], [0])
+        self.assertTrue(result["dates"]["2026-08-24"]["cached"])
+        self.assertEqual(result["dates"]["2026-08-24"]["state"], "partial")
+        self.assertEqual(result["dates"]["2026-08-24"]["updatedAt"], 100)
+        self.assertEqual(result["dates"]["2026-08-25"]["events"], [])
+        self.assertEqual(result["dates"]["2026-08-25"]["state"], "ok")
+        self.assertEqual(result["dates"]["2026-08-25"]["updatedAt"], 200)
+
+    def test_cached_and_fresh_spanning_revisions_do_not_overwrite_each_other(self):
+        start, end = date(2026, 8, 24), date(2026, 8, 26)
+        old = CALENDAR_EVENTS.MonthBuilder(start, end)
+        old.add(self.event(title="Old title"), ["2026-08-24", "2026-08-25"])
+        fresh = CALENDAR_EVENTS.MonthBuilder(start, end)
+        fresh.add(self.event(title="New title"), ["2026-08-25"])
+        fresh.incomplete(["2026-08-24"])
+        result = CALENDAR_EVENTS.merge_month(fresh.finish(), old.finish())
+        titles = [result["events"][result["dates"][key]["events"][0]]["title"] for key in ("2026-08-24", "2026-08-25")]
+        self.assertEqual(titles, ["Old title", "New title"])
+
+    def test_month_cache_survives_restart_and_worker_failure(self):
+        start, end = date(2026, 8, 24), date(2026, 10, 5)
+        builder = CALENDAR_EVENTS.MonthBuilder(start, end)
+        builder.add(self.event(), ["2026-08-24"])
+        good = builder.finish()
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "cache.json"
+            CALENDAR_EVENTS.store_view(good, path)
+            with patch.object(CALENDAR_EVENTS, "run_bounded_worker", return_value=None):
+                result = CALENDAR_EVENTS.refreshed_view("month", start, end, path)
+            self.assertEqual(len(result["events"]), 1)
+            self.assertEqual(result["dates"]["2026-08-24"]["events"], [0])
+            self.assertEqual(result["state"], "partial")
+            recovered = CALENDAR_EVENTS.cached_view("month", start, end, path)
+            self.assertEqual(recovered["dates"], result["dates"])
+            self.assertTrue(CALENDAR_EVENTS.valid_payload(recovered))
 
     def test_cancelled_occurrences_still_have_a_work_budget(self):
         events, error = self.fetch(200000, cancelled=True)
@@ -242,7 +348,7 @@ class CalendarEventsTest(unittest.TestCase):
         payload = self.payload()
         payload["updatedAt"] = int(time.time())
         with TemporaryDirectory() as directory:
-            path = Path(directory) / "foamy-clock" / "agenda-v2.json"
+            path = Path(directory) / "foamy-clock" / "agenda-v3.json"
             CALENDAR_EVENTS.store_view(payload, path)
             with patch.dict(os.environ, {"XDG_CACHE_HOME": directory}), patch.object(sys, "argv", [str(MODULE_PATH), "--date", "2026-08-24", "--max-age", "1800"]), patch.object(CALENDAR_EVENTS, "run_bounded_worker", side_effect=AssertionError("unnecessary worker")), patch("builtins.print") as output:
                 self.assertEqual(CALENDAR_EVENTS.main(), 0)
@@ -299,13 +405,36 @@ class CalendarEventsTest(unittest.TestCase):
         self.assertEqual(result["state"], "error")
         self.assertFalse(result["complete"])
 
-    def test_cached_cli_returns_day_before_grid(self):
+    def test_cached_cli_emits_atomic_month_transaction(self):
         with TemporaryDirectory() as directory:
             import os
             output = subprocess.check_output([sys.executable, str(MODULE_PATH), "--cached", "--date", "2026-08-24", "--range-start", "2026-08-01", "--range-end", "2026-09-12"], env={**os.environ, "XDG_CACHE_HOME": directory})
             lines = [json.loads(line) for line in output.splitlines()]
-            self.assertEqual([item["kind"] for item in lines], ["day", "grid"])
-            self.assertTrue(all(CALENDAR_EVENTS.valid_payload(item) for item in lines))
+            self.assertEqual([item["kind"] for item in lines], ["month-start", "month-end"])
+            self.assertEqual(len(lines[0]["dates"]), 42)
+            self.assertEqual(lines[0]["state"], "missing")
+
+    def test_cache_only_refresh_persists_without_shell_output(self):
+        start = date(2026, 8, 24)
+        month = self.payload(kind="month", start=start)
+        month["events"] = [self.event()]
+        month["dates"][start.isoformat()]["events"] = [0]
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            with patch.object(sys, "argv", ["calendar-events.py", "--cache-only", "--range-start", str(start), "--range-end", str(start + timedelta(days=42))]), patch.object(CALENDAR_EVENTS, "default_cache_path", return_value=path), patch.object(CALENDAR_EVENTS, "run_bounded_worker", return_value=month) as worker, patch.object(CALENDAR_EVENTS, "emit_view") as output:
+                self.assertEqual(CALENDAR_EVENTS.main(), 0)
+                worker.assert_called_once()
+                output.assert_not_called()
+            cached = CALENDAR_EVENTS.cached_view("month", start, start + timedelta(days=42), path)
+            self.assertEqual(cached["events"], month["events"])
+            self.assertEqual(cached["state"], "ok")
+
+            # A restart reuses fresh prefetched data without an Exchange query.
+            cached["updatedAt"] = int(time.time())
+            CALENDAR_EVENTS.store_view(cached, path)
+            with patch.object(sys, "argv", ["calendar-events.py", "--cache-only", "--max-age", "1800", "--range-start", str(start), "--range-end", str(start + timedelta(days=42))]), patch.object(CALENDAR_EVENTS, "default_cache_path", return_value=path), patch.object(CALENDAR_EVENTS, "run_bounded_worker", side_effect=AssertionError("unnecessary worker")), patch.object(CALENDAR_EVENTS, "emit_view") as output:
+                self.assertEqual(CALENDAR_EVENTS.main(), 0)
+                output.assert_not_called()
 
 
 if __name__ == "__main__":

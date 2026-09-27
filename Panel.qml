@@ -41,10 +41,17 @@ Panel {
   onAgendaEnabledChanged: {
     // Drop visible data immediately. In-flight results are ignored when disabled.
     root.calendarDates = ({})
+    root.monthView = null
+    root.pendingMonth = null
     root.overviewState = "missing"
-    if (!agendaEnabled && agendaProcess.running) agendaProcess.signal(15)
+    if (!agendaEnabled && agendaProcess.running) {
+      root.agendaRequestCancelled = true
+      agendaProcess.signal(15)
+    }
     root.resetAgendaView()
     root.lastAgendaRangeRefreshMs = 0
+    root.prefetchAttempts = ({})
+    root.agendaRefreshPending = false
     if (agendaEnabled) Qt.callLater(root.requestAgendaDate)
   }
 
@@ -77,6 +84,10 @@ Panel {
   // loaded first so a slow account never blanks the panel.
   property var agendaEvents: []
   property var calendarDates: ({})
+  property var monthView: null
+  property var pendingMonth: null
+  property int pendingMonthBytes: 0
+  property int pendingMonthChunks: 0
   property string agendaState: "loading"
   property string agendaMessage: ""
   property string overviewState: "missing"
@@ -91,14 +102,16 @@ Panel {
   property string cacheProcessDateKey: ""
   property string cacheProcessRangeStartKey: ""
   property string cacheProcessRangeEndKey: ""
-  property string lastAgendaDateKey: ""
+  property bool agendaRequestCancelled: false
+  property bool agendaPrefetch: false
+  property bool agendaRefreshPending: false
+  property var prefetchAttempts: ({})
   property bool agendaForceRefresh: false
   property bool agendaPayloadApplied: false
-  property bool agendaOverviewApplied: false
   property double lastAgendaRangeRefreshMs: 0
   property string lastAgendaRangeKey: ""
   readonly property int agendaRefreshIntervalMs: preference("agendaRefreshMinutes") * 60000
-  readonly property bool agendaLoading: agendaProcess.running || cacheProcess.running
+  readonly property bool agendaLoading: (agendaProcess.running && !agendaPrefetch) || cacheProcess.running
   readonly property date agendaRangeStartDate: new Date(weeks[0].days[0].year, weeks[0].days[0].month, weeks[0].days[0].day)
   readonly property date agendaRangeEndDate: new Date(agendaRangeStartDate.getFullYear(), agendaRangeStartDate.getMonth(), agendaRangeStartDate.getDate() + 42)
   readonly property string agendaRangeStartKey: Model.keyForDate(agendaRangeStartDate)
@@ -106,6 +119,8 @@ Panel {
   readonly property string agendaRangeKey: agendaRangeStartKey + ":" + agendaRangeEndKey
   onAgendaRangeKeyChanged: {
     root.calendarDates = ({})
+    root.monthView = null
+    root.pendingMonth = null
     root.overviewState = "missing"
     Qt.callLater(root.requestAgendaDate)
   }
@@ -136,6 +151,11 @@ Panel {
   // convention. Clicking the grid's "W" heading writes the choice back to
   // shell.json.
   readonly property int weekStart: Model.normalizedWeekStart(preference("weekStartDay"), displayLocale.firstDayOfWeek)
+  readonly property string prefetchHorizonKey: today.getFullYear() + ":" + today.getMonth() + ":" + weekStart
+  onPrefetchHorizonKeyChanged: {
+    root.prefetchAttempts = ({})
+    Qt.callLater(root.schedulePrefetch)
+  }
   readonly property string nextWeekStartLabel: displayLocale.dayName(Model.toggledWeekStart(weekStart), Locale.LongFormat)
   readonly property var weekdays: Model.weekdayOrder(weekStart)
   readonly property var weeks: Model.monthGrid(viewYear, viewMonth, weekStart, todayKey)
@@ -208,21 +228,112 @@ Panel {
     root.goToToday()
   }
 
+  function monthIsCurrent() {
+    return root.monthView && root.monthView.date === root.agendaRangeStartKey
+      && root.monthView.rangeEnd === root.agendaRangeEndKey
+  }
+
+  function showSelectedDay() {
+    if (!root.monthIsCurrent()) return false
+    return root.showDay(root.monthView, root.selectedDateKey)
+  }
+
+  function showDay(month, key) {
+    var day = month.dates[key]
+    if (!day || day.state === "missing") return false
+    root.agendaEvents = day.events.map(index => month.events[index])
+    root.agendaState = day.state
+    root.agendaDateKey = root.selectedDateKey
+    root.selectedCalendars = month.selectedCalendars
+    root.lastAgendaRefreshMs = day.updatedAt * 1000
+    root.agendaCached = month.cached || day.cached
+    return true
+  }
+
   function requestAgendaDate() {
     if (!root.agendaEnabled) return
+    root.showSelectedDay()
     if (cacheProcess.running || agendaProcess.running) {
-      // The helper handles SIGTERM and reaps its worker before exiting.
-      if (agendaProcess.running && (root.agendaProcessDateKey !== root.selectedDateKey
-          || root.agendaProcessRangeStartKey !== root.agendaRangeStartKey
-          || root.agendaProcessRangeEndKey !== root.agendaRangeEndKey)) agendaProcess.signal(15)
+      if (agendaProcess.running && root.agendaPrefetch) {
+        // Loaded day clicks leave background work alone. A new visible month
+        // takes priority, including its fast disk read, before more prefetching.
+        if (!root.monthIsCurrent()) {
+          root.agendaRequestCancelled = true
+          agendaProcess.signal(15)
+        }
+        return
+      }
+      // Day selection uses the shared month view and never cancels its refresh.
+      if (agendaProcess.running && (root.agendaProcessRangeStartKey !== root.agendaRangeStartKey
+          || root.agendaProcessRangeEndKey !== root.agendaRangeEndKey)) {
+        root.agendaRequestCancelled = true
+        agendaProcess.signal(15)
+      }
       return
     }
-
-    if (root.agendaDateKey !== root.selectedDateKey) root.resetAgendaView()
+    if (root.monthIsCurrent()) {
+      root.refreshAgenda(false)
+      return
+    }
     root.cacheProcessDateKey = root.selectedDateKey
     root.cacheProcessRangeStartKey = root.agendaRangeStartKey
     root.cacheProcessRangeEndKey = root.agendaRangeEndKey
     cacheProcess.running = true
+  }
+
+  function prefetchRanges() {
+    var ranges = []
+    for (var offset = 0; offset <= 3; offset++) {
+      var month = Model.stepMonth(root.today.getFullYear(), root.today.getMonth(), offset)
+      var first = Model.monthGrid(month.year, month.month, root.weekStart, "")[0].days[0]
+      ranges.push({start: first.key,
+        end: Model.keyForDate(new Date(first.year, first.month, first.day + 42))})
+    }
+    return ranges
+  }
+
+  function schedulePrefetch() {
+    if (!root.agendaEnabled || !root.monthIsCurrent()
+        || cacheProcess.running || agendaProcess.running) return
+    var ranges = root.prefetchRanges()
+    var attempts = ({})
+    // Keep only four timestamps. Completed failures also get a cooldown;
+    // an unavailable account must not create an immediate retry loop.
+    for (var range of ranges) {
+      var key = range.start + ":" + range.end
+      attempts[key] = root.prefetchAttempts[key] || 0
+    }
+    root.prefetchAttempts = attempts
+    // Serve never-attempted and oldest months first. Short refresh intervals
+    // must not let the nearest month repeatedly starve the farther months.
+    ranges.sort((a, b) => attempts[a.start + ":" + a.end] - attempts[b.start + ":" + b.end])
+    for (var range of ranges) {
+      var key = range.start + ":" + range.end
+      if (key === root.agendaRangeKey) continue
+      if (Date.now() - attempts[key] < root.agendaRefreshIntervalMs) continue
+      root.agendaPrefetch = true
+      root.agendaRequestCancelled = false
+      root.agendaForceRefresh = false
+      root.agendaProcessDateKey = range.start
+      root.agendaProcessRangeStartKey = range.start
+      root.agendaProcessRangeEndKey = range.end
+      agendaProcess.running = true
+      return
+    }
+  }
+
+  function finishPrefetch() {
+    var key = root.agendaProcessRangeStartKey + ":" + root.agendaProcessRangeEndKey
+    if (!root.agendaRequestCancelled && root.prefetchRanges().some(range => range.start + ":" + range.end === key)) {
+      var attempts = root.prefetchAttempts
+      attempts[key] = Date.now()
+      root.prefetchAttempts = attempts
+    }
+    root.agendaRequestCancelled = false
+    root.agendaPrefetch = false
+    // Serialize disk readers/writers and workers through the same request
+    // path. A foreground request interrupted this job, so satisfy it first.
+    Qt.callLater(root.requestAgendaDate)
   }
 
   function resetAgendaView() {
@@ -237,19 +348,33 @@ Panel {
 
   function refreshAgenda(force) {
     if (!root.agendaEnabled) return
-    if (cacheProcess.running || agendaProcess.running) return
-    if (root.agendaDateKey !== root.selectedDateKey) {
-      root.requestAgendaDate()
+    if (agendaProcess.running || cacheProcess.running) {
+      if (force && root.agendaPrefetch && agendaProcess.running) {
+        root.agendaRefreshPending = true
+        root.agendaRequestCancelled = true
+        agendaProcess.signal(15)
+      }
       return
     }
-    if (!force && root.lastAgendaRefreshMs > 0 && root.lastAgendaDateKey === root.selectedDateKey
-        && root.lastAgendaRangeKey === root.agendaRangeKey
-        && root.lastAgendaRangeRefreshMs > 0
-        && Date.now() - root.lastAgendaRangeRefreshMs < root.agendaRefreshIntervalMs) return
-
+    force = force || root.agendaRefreshPending
+    if (!force) {
+      // A fresh disk view avoids Exchange entirely. A recent failed attempt
+      // also gets a cooldown, rather than retrying on every day click.
+      var updated = root.monthIsCurrent() && root.monthView.state === "ok"
+        ? root.monthView.updatedAt * 1000 : 0
+      var attempted = root.lastAgendaRangeKey === root.agendaRangeKey
+        ? root.lastAgendaRangeRefreshMs : 0
+      if (Date.now() - Math.max(updated, attempted) < root.agendaRefreshIntervalMs) {
+        root.schedulePrefetch()
+        return
+      }
+    }
+    root.agendaRefreshPending = false
+    root.agendaPrefetch = false
+    root.agendaRequestCancelled = false
     root.agendaForceRefresh = force
     root.agendaPayloadApplied = false
-    root.agendaOverviewApplied = false
+    root.pendingMonth = null
     root.agendaProcessDateKey = root.selectedDateKey
     root.agendaProcessRangeStartKey = root.agendaRangeStartKey
     root.agendaProcessRangeEndKey = root.agendaRangeEndKey
@@ -258,35 +383,67 @@ Panel {
   }
 
   function applyAgendaPayload(raw, fromCache, expectedDateKey, rangeStart, rangeEnd) {
-    if (!root.agendaEnabled) return false
+    if (!root.agendaEnabled || rangeStart !== root.agendaRangeStartKey
+        || rangeEnd !== root.agendaRangeEndKey) return false
     try {
-      // The Python bridge bounds bytes before SplitParser sees them. These
-      // checks also keep unexpected protocol changes out of the UI model.
-      if (String(raw).length > 262144) return false
+      // The bridge bounds each line before Qt reads it. Bound the assembled
+      // transaction too, and retain the previous view until the commit marker.
+      if (String(raw).length > 262144) throw new Error("oversized calendar line")
       var payload = JSON.parse(String(raw || ""))
-      if (!payload || ["ok", "partial", "error", "missing"].indexOf(payload.state) < 0) return false
-      if (payload.kind === "grid") {
-        if (payload.date !== rangeStart || payload.rangeEnd !== rangeEnd
-            || rangeStart !== root.agendaRangeStartKey || rangeEnd !== root.agendaRangeEndKey) return false
-        if (!payload.dates || Object.keys(payload.dates).length > 42) return false
-        if (payload.state !== "missing") {
-          root.calendarDates = payload.dates
-          root.overviewState = payload.state
-          if (!fromCache) root.agendaOverviewApplied = true
-        }
+      if (!payload || payload.date !== rangeStart || payload.rangeEnd !== rangeEnd) return false
+      if (payload.kind === "month-start") {
+        if (!payload.dates || Object.keys(payload.dates).length !== 42
+            || ["ok", "partial", "error", "missing"].indexOf(payload.state) < 0) return false
+        root.pendingMonth = payload
+        root.pendingMonth.events = []
+        root.pendingMonth.cached = fromCache || payload.cached
+        root.pendingMonthBytes = String(raw).length
+        root.pendingMonthChunks = 0
         return false
       }
-      if (payload.kind !== "day" || !Array.isArray(payload.events) || payload.events.length > 100) return false
-      if (payload.date !== expectedDateKey || expectedDateKey !== root.selectedDateKey) return false
-      if (payload.state === "missing") return false
-      root.agendaEvents = payload.events
-      root.agendaState = payload.state
-      root.agendaDateKey = payload.date
-      root.selectedCalendars = payload.selectedCalendars
-      root.lastAgendaRefreshMs = payload.updatedAt * 1000
-      root.agendaCached = fromCache || payload.cached
+      if (!root.pendingMonth) return false
+      root.pendingMonthBytes += String(raw).length
+      if (root.pendingMonthBytes > 2162688) throw new Error("oversized calendar month")
+      if (payload.kind === "month-events") {
+        root.pendingMonthChunks++
+        if (!Array.isArray(payload.events) || payload.events.length > 100
+            || root.pendingMonthChunks > 10
+            || root.pendingMonth.events.length + payload.events.length > 1000)
+          throw new Error("too many calendar events")
+        root.pendingMonth.events = root.pendingMonth.events.concat(payload.events)
+        return false
+      }
+      if (payload.kind !== "month-end") throw new Error("invalid calendar message")
+      var month = root.pendingMonth
+      root.pendingMonth = null
+      if (month.state === "missing") return false
+      var dates = ({})
+      for (var key of Object.keys(month.dates)) {
+        var day = month.dates[key]
+        if (!day || !Array.isArray(day.events) || day.events.length > 100
+            || ["ok", "partial", "error", "missing"].indexOf(day.state) < 0)
+          throw new Error("invalid calendar date")
+        var seen = new Set()
+        var dots = []
+        for (var index of day.events) {
+          if (!Number.isInteger(index) || index < 0 || index >= month.events.length)
+            throw new Error("invalid calendar reference")
+          var event = month.events[index]
+          var id = String(event.id).split(":")[0]
+          if (!seen.has(id) && dots.length < 5) {
+            seen.add(id)
+            dots.push({id: id, color: event.color})
+          }
+        }
+        dates[key] = dots
+      }
+      root.monthView = month
+      root.calendarDates = dates
+      root.overviewState = month.state
+      root.showSelectedDay()
       return true
     } catch (error) {
+      root.pendingMonth = null
       return false
     }
   }
@@ -294,6 +451,11 @@ Panel {
   function dotsForDate(key) {
     var dots = root.calendarDates[key]
     return Array.isArray(dots) ? dots : []
+  }
+
+  function dateIsIncomplete(key) {
+    var day = root.monthIsCurrent() ? root.monthView.dates[key] : null
+    return !day || day.state !== "ok"
   }
 
   function agendaMessageText() {
@@ -305,7 +467,7 @@ Panel {
 
   function updatedAgoText() {
     if (root.agendaState === "error") return localText("Kalender utilgjengelig", "Calendar unavailable")
-    if (root.agendaState === "partial" || root.overviewState === "partial" || root.overviewState === "error")
+    if (root.agendaState === "partial")
       return localText("Delvis oppdatert · åpne kalender", "Partial update · open calendar")
     if (root.agendaState === "loading") return localText("Oppdaterer…", "Updating…")
     if (root.lastAgendaRefreshMs <= 0) return ""
@@ -353,6 +515,9 @@ Panel {
   function selectDate(year, month, day) {
     var nextDate = new Date(year, month, day)
     var nextKey = Model.keyForDate(nextDate)
+    // The adjacent dates are cached too. Preserve their ready agenda when
+    // selecting one also changes the visible month and starts a new preload.
+    var cachedMonth = root.monthView
     root.viewYear = nextDate.getFullYear()
     root.viewMonth = nextDate.getMonth()
     if (nextKey === root.selectedDateKey) return
@@ -361,6 +526,7 @@ Panel {
     // A previous date may still be loading. Clear it immediately so its rows
     // are never presented under the newly selected date heading.
     root.resetAgendaView()
+    if (cachedMonth) root.showDay(cachedMonth, nextKey)
     root.requestAgendaDate()
   }
 
@@ -463,13 +629,9 @@ Panel {
     }
     onExited: Qt.callLater(function() {
       if (!root.agendaEnabled) return
-      if (root.cacheProcessDateKey !== root.selectedDateKey
-          || root.cacheProcessRangeStartKey !== root.agendaRangeStartKey
+      if (root.cacheProcessRangeStartKey !== root.agendaRangeStartKey
           || root.cacheProcessRangeEndKey !== root.agendaRangeEndKey) root.requestAgendaDate()
       else {
-        // A cache miss still belongs to this date; mark it current so the
-        // following live refresh does not loop back through the cache reader.
-        root.agendaDateKey = root.selectedDateKey
         root.refreshAgenda(false)
       }
     })
@@ -479,8 +641,8 @@ Panel {
     id: agendaProcess
     command: [
       "timeout",
-      // Each worker has a 45-second deadline; this also bounds the bridge.
-      "100s",
+      // One month worker has a 45-second deadline; also bound the bridge.
+      "55s",
       "nice",
       "-n",
       "10",
@@ -493,48 +655,54 @@ Panel {
       "--range-end",
       root.agendaProcessRangeEndKey,
       "--max-age", String(root.agendaForceRefresh ? 0 : root.agendaRefreshIntervalMs / 1000)
-    ]
+    ].concat(root.agendaPrefetch ? ["--cache-only"] : [])
     stdout: SplitParser {
       onRead: data => {
+        if (root.agendaPrefetch) return
         if (root.applyAgendaPayload(data, false, root.agendaProcessDateKey,
             root.agendaProcessRangeStartKey, root.agendaProcessRangeEndKey)) root.agendaPayloadApplied = true
       }
     }
     onExited: function(exitCode) {
-      if (!root.agendaEnabled) return
-      var completedRangeKey = root.agendaProcessRangeStartKey
-        + ":" + root.agendaProcessRangeEndKey
-      // An interrupted request must not suppress the replacement request.
-      if (root.agendaPayloadApplied && root.agendaOverviewApplied) {
-        root.lastAgendaDateKey = root.agendaProcessDateKey
-        root.lastAgendaRangeKey = completedRangeKey
-        root.lastAgendaRangeRefreshMs = Date.now()
-      }
-
-      if (root.agendaProcessDateKey !== root.selectedDateKey || completedRangeKey !== root.agendaRangeKey
-          || root.agendaDateKey !== root.selectedDateKey) {
-        Qt.callLater(function() { root.requestAgendaDate() })
+      if (root.agendaPrefetch) {
+        if (root.agendaEnabled) root.finishPrefetch()
+        else root.agendaPrefetch = false
         return
       }
-
-      if (!root.agendaPayloadApplied) {
-        if (root.agendaEvents.length > 0) {
-          root.agendaState = "partial"
-        } else {
-          root.agendaState = "error"
-          root.agendaMessage = "Calendar data is unavailable"
-        }
+      if (!root.agendaEnabled) return
+      var completedRangeKey = root.agendaProcessRangeStartKey + ":" + root.agendaProcessRangeEndKey
+      root.pendingMonth = null
+      if (root.agendaRequestCancelled || completedRangeKey !== root.agendaRangeKey) {
+        root.agendaRequestCancelled = false
+        Qt.callLater(root.requestAgendaDate)
+        return
       }
-
-      if (!root.agendaOverviewApplied) root.overviewState = "partial"
+      root.lastAgendaRangeKey = completedRangeKey
+      root.lastAgendaRangeRefreshMs = Date.now()
+      if (!root.agendaPayloadApplied) {
+        root.overviewState = "partial"
+        root.agendaState = root.lastAgendaRefreshMs > 0 ? "partial" : "error"
+      }
+      Qt.callLater(root.schedulePrefetch)
     }
+  }
+
+  Timer {
+    // Check due times cheaply; event fetching still uses the configured
+    // refresh interval and only one bounded month worker at a time.
+    interval: 60000
+    repeat: true
+    running: root.agendaEnabled
+    onTriggered: root.schedulePrefetch()
   }
 
   Timer {
     interval: root.agendaRefreshIntervalMs
     repeat: true
     running: root.agendaEnabled
-    onTriggered: root.refreshAgenda(true)
+    // Only explicit user refreshes interrupt prefetch. A periodic tick waits
+    // for the active worker, then finishPrefetch checks visible freshness.
+    onTriggered: root.refreshAgenda(false)
   }
 
   component ClockLabel: Text {
@@ -960,8 +1128,8 @@ Panel {
                               onClicked: root.selectDate(modelData.year, modelData.month, modelData.day)
                             }
                             PanelToolTip {
-                              visible: dayMouse.containsMouse && (dayCell.dotCount > 0 || root.overviewState !== "ok")
-                              text: root.overviewState === "ok"
+                              visible: dayMouse.containsMouse && (dayCell.dotCount > 0 || root.dateIsIncomplete(modelData.key))
+                              text: !root.dateIsIncomplete(modelData.key)
                                 ? root.localText("Velg dagen for å se avtaler", "Select this date to see events")
                                 : root.localText("Kalenderoversikten kan være ufullstendig", "Calendar overview may be incomplete")
                               fontFamily: root.contentFontFamily
@@ -1144,12 +1312,12 @@ Panel {
                     id: updateStatusMouse
                     anchors.fill: parent
                     hoverEnabled: true
-                    cursorShape: root.agendaState === "partial" || root.overviewState === "partial" || root.overviewState === "error" ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    cursorShape: root.agendaState === "partial" ? Qt.PointingHandCursor : Qt.ArrowCursor
                     onClicked: if (cursorShape === Qt.PointingHandCursor) root.openCalendar()
                   }
                   PanelToolTip {
                     visible: updateStatusMouse.containsMouse
-                    text: root.agendaState === "partial" || root.overviewState === "partial" || root.overviewState === "error"
+                    text: root.agendaState === "partial"
                       ? root.localText("Noen avtaler kan mangle. Åpne kalenderen for full oversikt.", "Some events may be missing. Open calendar for the full view.")
                       : updateStatus.text
                     fontFamily: root.contentFontFamily
