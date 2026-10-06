@@ -813,13 +813,15 @@ Panel {
             // Match weather's static header wash; the seconds never repaint it.
             Canvas {
               id: headerBackground
+              readonly property real cornerRadius: Math.max(0, Math.min(width / 2, height, panel.cornerRadius - Border.top(panel.borderSpec)))
+              onCornerRadiusChanged: requestPaint()
               anchors.fill: parent
               onWidthChanged: requestPaint()
               onHeightChanged: requestPaint()
               onPaint: {
                 var ctx = getContext("2d")
                 ctx.reset()
-                var radius = Style.space(13)
+                var radius = cornerRadius
                 ctx.beginPath()
                 ctx.moveTo(radius, 0); ctx.lineTo(width - radius, 0)
                 ctx.quadraticCurveTo(width, 0, width, radius)
@@ -930,7 +932,7 @@ Panel {
               anchors.rightMargin: Style.space(16)
               implicitWidth: Style.space(32)
               implicitHeight: Style.space(32)
-              radius: Style.space(7)
+              radius: Style.cornerRadius * 2
               iconSize: Style.space(16)
               iconName: "settings"
               foreground: root.secondaryForeground
@@ -978,12 +980,14 @@ Panel {
                   anchors.right: parent.right
                   spacing: Style.space(4)
                   PanelActionButton {
+                    radius: Style.cornerRadius * 2
                     size: Style.space(27); fontSize: Style.space(22); iconText: "‹"
                     fontFamily: root.contentFontFamily; foreground: root.secondaryForeground
                     tooltipText: root.localText("Forrige måned", "Previous month")
                     onClicked: root.moveMonth(-1)
                   }
                   PanelActionButton {
+                    radius: Style.cornerRadius * 2
                     size: Style.space(27); fontSize: Style.space(22); iconText: "›"
                     fontFamily: root.contentFontFamily; foreground: root.secondaryForeground
                     tooltipText: root.localText("Neste måned", "Next month")
@@ -1007,7 +1011,7 @@ Panel {
                 Rectangle {
                   width: root.weekColumnWidth
                   height: parent.height
-                  radius: Style.space(6)
+                  radius: Style.cornerRadius * 2
                   color: root.weekColumnColor
                 }
                 Column {
@@ -1018,7 +1022,7 @@ Panel {
                     height: Style.space(28)
                     Rectangle {
                       width: root.weekColumnWidth; height: parent.height
-                      radius: Style.space(6)
+                      radius: Style.cornerRadius * 2
                       color: weekStartMouse.containsMouse ? root.cardColor : "transparent"
                       ClockLabel {
                         anchors.centerIn: parent
@@ -1076,7 +1080,7 @@ Panel {
                             readonly property int dotCount: dots.length
                             readonly property bool selected: modelData.key === root.selectedDateKey
                             width: root.cellWidth; height: root.cellHeight
-                            radius: Style.space(7)
+                            radius: Style.cornerRadius * 2
                             color: selected ? root.selectedCardColor : dayMouse.containsMouse ? root.cardColor : "transparent"
                             border.width: modelData.today ? Style.spacing.hairline : 0
                             border.color: Color.accent
@@ -1217,7 +1221,7 @@ Panel {
                   readonly property string agendaStatus: root.eventState(modelData)
                   width: agendaScroll.width - (agendaScroll.interactive ? Style.space(10) : 0)
                   height: Style.space(60)
-                  radius: Style.space(8)
+                  radius: Style.cornerRadius * 2
                   color: eventMouse.containsMouse || agendaStatus === "ongoing" ? root.selectedCardColor : root.cardColor
                   Rectangle {
                     anchors.left: parent.left; anchors.leftMargin: Style.space(11)
@@ -1275,6 +1279,7 @@ Panel {
               Item {
                 width: parent.width; height: Style.space(28)
                 PanelActionButton {
+                  radius: Style.cornerRadius * 2
                   id: openCalendarButton
                   anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
                   size: Style.space(26); fontSize: Style.space(14)

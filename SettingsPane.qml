@@ -109,7 +109,7 @@ Column {
             implicitHeight: Style.space(36)
             color: "transparent"
             borderSpec: activeFocus ? Border.flat(Color.accent, 1) : Border.none()
-            radius: Style.space(7)
+            radius: Style.cornerRadius * 2
             fontFamily: "sans-serif"
             titleSize: Style.space(13)
             label: root.tr(fieldRow.spec.label)
@@ -161,7 +161,7 @@ Column {
               font.pixelSize: Style.space(12)
               padding: Style.space(7)
               Accessible.name: root.tr(fieldRow.spec.label)
-              background: Rectangle { radius: Style.space(7); color: Qt.alpha(Color.popups.text, 0.055); border.width: numberField.activeFocus ? 1 : 0; border.color: Color.accent }
+              background: Rectangle { radius: Style.cornerRadius * 2; color: Qt.alpha(Color.popups.text, 0.055); border.width: numberField.activeFocus ? 1 : 0; border.color: Color.accent }
               onTextEdited: root.clearError()
               onEditingFinished: {
                 if (!visible) return
@@ -192,7 +192,7 @@ Column {
             font.pixelSize: Style.space(12)
             padding: Style.space(8)
             Accessible.name: root.tr(fieldRow.spec.label)
-            background: Rectangle { radius: Style.space(7); color: "transparent"; border.width: 1; border.color: textField.activeFocus ? Color.accent : Qt.alpha(Color.popups.text, 0.22) }
+            background: Rectangle { radius: Style.cornerRadius * 2; color: "transparent"; border.width: 1; border.color: textField.activeFocus ? Color.accent : Qt.alpha(Color.popups.text, 0.22) }
             onTextEdited: root.clearError()
             onEditingFinished: {
               if (!visible) return
