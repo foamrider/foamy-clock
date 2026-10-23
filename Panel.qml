@@ -20,8 +20,8 @@ Panel {
 
   property var anchorItem: null
   function preference(key) { return Preferences.value(root.settings, key) }
-  readonly property string language: Preferences.language(preference("language"), Qt.locale().name)
-  function tr(text) { return Preferences.text(text, language) }
+  readonly property string language: FoamyI18n.language
+  function tr(text) { return FoamyI18n.t(text) }
   property bool editingSettings: false
   property string launchError: ""
   readonly property bool agendaEnabled: preference("agendaEnabled")
@@ -125,13 +125,12 @@ Panel {
     Qt.callLater(root.requestAgendaDate)
   }
   readonly property string agendaDateLabel: selectedDateIsToday
-    ? localText("I dag", "Today")
+    ? FoamyI18n.t("Today")
     : displayLocale.toString(selectedDate, "ddd d MMM")
   readonly property string agendaUpdatedText: updatedAgoText()
 
-  readonly property string localeName: Preferences.localeName(root.settings, Qt.locale().name)
+  readonly property string localeName: Preferences.localeName(root.settings, FoamyI18n.formatLocale)
   readonly property var displayLocale: Qt.locale(localeName)
-  readonly property bool norwegian: root.language === "nb"
   property string timeZoneName: ""
 
   function heroTimeText() {
@@ -142,9 +141,7 @@ Panel {
     return period ? full.slice(0, -period.length).trim() : full
   }
 
-  function localText(norwegianText, englishText) {
-    return norwegian ? norwegianText : englishText
-  }
+
 
   // Unset falls through to the locale's own first day, so a fresh install
   // starts out matching the rest of the desktop rather than a hardcoded
@@ -459,22 +456,22 @@ Panel {
   }
 
   function agendaMessageText() {
-    if (root.agendaState === "error") return root.localText("Kalenderdata er utilgjengelige", "Calendar data is unavailable")
-    if (root.agendaState === "partial") return root.localText("Noen avtaler kan mangle. Åpne kalenderen for full oversikt.", "Some events may be missing. Open calendar for the full view.")
-    if (root.agendaState === "cached") return root.localText("Viser lagrede kalenderdata", "Showing cached calendar data")
+    if (root.agendaState === "error") return FoamyI18n.t("Calendar data is unavailable")
+    if (root.agendaState === "partial") return FoamyI18n.t("Some events may be missing. Open calendar for the full view.")
+    if (root.agendaState === "cached") return FoamyI18n.t("Showing cached calendar data")
     return root.agendaMessage
   }
 
   function updatedAgoText() {
-    if (root.agendaState === "error") return localText("Kalender utilgjengelig", "Calendar unavailable")
+    if (root.agendaState === "error") return FoamyI18n.t("Calendar unavailable")
     if (root.agendaState === "partial")
-      return localText("Delvis oppdatert · åpne kalender", "Partial update · open calendar")
-    if (root.agendaState === "loading") return localText("Oppdaterer…", "Updating…")
+      return FoamyI18n.t("Partial update · open calendar")
+    if (root.agendaState === "loading") return FoamyI18n.t("Updating…")
     if (root.lastAgendaRefreshMs <= 0) return ""
     var elapsedMinutes = Math.max(0, Math.floor((root.now.getTime() - root.lastAgendaRefreshMs) / 60000))
-    if (elapsedMinutes === 0) return localText("Oppdatert nå", "Updated just now")
-    if (elapsedMinutes === 1) return localText("Oppdatert for 1 minutt siden", "Updated 1 minute ago")
-    return localText("Oppdatert for " + elapsedMinutes + " minutter siden", "Updated " + elapsedMinutes + " minutes ago")
+    if (elapsedMinutes === 0) return FoamyI18n.t("Updated just now")
+    if (elapsedMinutes === 1) return FoamyI18n.t("Updated 1 minute ago")
+    return FoamyI18n.t("Updated %1 minutes ago", FoamyI18n.number(elapsedMinutes))
   }
 
   function eventState(event) {
@@ -486,7 +483,7 @@ Panel {
   }
 
   function eventTimeText(event) {
-    if (!event || event.allDay === true) return localText("Hele dagen", "All day")
+    if (!event || event.allDay === true) return FoamyI18n.t("All day")
     var start = root.displayLocale.toString(new Date(Number(event.start) * 1000), root.timeFormat)
     var end = root.displayLocale.toString(new Date(Number(event.end) * 1000), root.timeFormat)
     return start + "–" + end
@@ -902,7 +899,7 @@ Panel {
                   visible: !root.veryShortHeight
                   width: parent.width
                   horizontalAlignment: Text.AlignHCenter
-                  text: root.localText("Uke ", "Week ")
+                  text: FoamyI18n.t("Week ")
                     + Model.isoWeek(root.today.getFullYear(), root.today.getMonth(), root.today.getDate())
                     + " · " + root.today.getFullYear()
                   color: root.secondaryForeground
@@ -920,7 +917,7 @@ Panel {
               onClicked: root.goToToday()
               PanelToolTip {
                 visible: heroMouse.containsMouse
-                text: root.localText("Tilbake til i dag", "Back to today")
+                text: FoamyI18n.t("Back to today")
                 fontFamily: root.contentFontFamily
               }
             }
@@ -983,14 +980,14 @@ Panel {
                     radius: Style.cornerRadius * 2
                     size: Style.space(27); fontSize: Style.space(22); iconText: "‹"
                     fontFamily: root.contentFontFamily; foreground: root.secondaryForeground
-                    tooltipText: root.localText("Forrige måned", "Previous month")
+                    tooltipText: FoamyI18n.t("Previous month")
                     onClicked: root.moveMonth(-1)
                   }
                   PanelActionButton {
                     radius: Style.cornerRadius * 2
                     size: Style.space(27); fontSize: Style.space(22); iconText: "›"
                     fontFamily: root.contentFontFamily; foreground: root.secondaryForeground
-                    tooltipText: root.localText("Neste måned", "Next month")
+                    tooltipText: FoamyI18n.t("Next month")
                     onClicked: root.moveMonth(1)
                   }
                 }
@@ -1026,7 +1023,7 @@ Panel {
                       color: weekStartMouse.containsMouse ? root.cardColor : "transparent"
                       ClockLabel {
                         anchors.centerIn: parent
-                        text: root.localText("Uke", "Week")
+                        text: FoamyI18n.t("Week")
                         color: root.weekForeground
                         font.pixelSize: Style.space(11)
                       }
@@ -1036,7 +1033,7 @@ Panel {
                         onClicked: root.toggleWeekStart()
                         PanelToolTip {
                           visible: weekStartMouse.containsMouse
-                          text: root.localText("Start uken på ", "Start weeks on ") + root.nextWeekStartLabel
+                          text: FoamyI18n.t("Start weeks on ") + root.nextWeekStartLabel
                           fontFamily: root.contentFontFamily
                         }
                       }
@@ -1134,8 +1131,8 @@ Panel {
                             PanelToolTip {
                               visible: dayMouse.containsMouse && (dayCell.dotCount > 0 || root.dateIsIncomplete(modelData.key))
                               text: !root.dateIsIncomplete(modelData.key)
-                                ? root.localText("Velg dagen for å se avtaler", "Select this date to see events")
-                                : root.localText("Kalenderoversikten kan være ufullstendig", "Calendar overview may be incomplete")
+                                ? FoamyI18n.t("Select this date to see events")
+                                : FoamyI18n.t("Calendar overview may be incomplete")
                               fontFamily: root.contentFontFamily
                             }
                           }
@@ -1163,8 +1160,8 @@ Panel {
                 ClockLabel {
                   anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
                   text: root.agendaState === "loading" || root.agendaState === "error" ? ""
-                    : root.agendaState === "partial" ? root.agendaEvents.length + root.localText(" vist", " shown")
-                    : root.agendaEvents.length + root.localText(root.agendaEvents.length === 1 ? " avtale" : " avtaler", root.agendaEvents.length === 1 ? " event" : " events")
+                    : root.agendaState === "partial" ? root.agendaEvents.length + FoamyI18n.t(" shown")
+                    : FoamyI18n.t(root.agendaEvents.length === 1 ? "%1 event" : "%1 events", FoamyI18n.number(root.agendaEvents.length))
                   color: root.secondaryForeground; font.pixelSize: Style.space(11)
                 }
               }
@@ -1208,10 +1205,10 @@ Panel {
                   width: agendaScroll.width
                   topPadding: Style.space(12); bottomPadding: Style.space(12)
                   wrapMode: Text.WordWrap
-                  text: root.agendaState === "loading" ? root.localText("Henter avtaler…", "Loading events…")
+                  text: root.agendaState === "loading" ? FoamyI18n.t("Loading events…")
                     : root.agendaState === "error" || root.agendaState === "partial" ? root.agendaMessageText()
-                    : root.selectedCalendars > 0 ? root.localText("Ingen avtaler denne dagen", "No events on this date")
-                    : root.localText("Ingen kalendere valgt", "No calendars selected")
+                    : root.selectedCalendars > 0 ? FoamyI18n.t("No events on this date")
+                    : FoamyI18n.t("No calendars selected")
                   color: root.agendaState === "error" ? Color.urgent : root.secondaryForeground
                   font.pixelSize: Style.space(12)
                 }
@@ -1234,7 +1231,7 @@ Panel {
                     anchors.left: parent.left; anchors.leftMargin: Style.space(24)
                     anchors.top: parent.top; anchors.topMargin: Style.space(12)
                     width: Style.space(root.preference("timeFormat") === "12-hour" ? 72 : 58)
-                    text: eventRow.modelData.allDay ? root.localText("Hele dagen", "All day")
+                    text: eventRow.modelData.allDay ? FoamyI18n.t("All day")
                       : root.displayLocale.toString(new Date(Number(eventRow.modelData.start) * 1000), root.timeFormat)
                     color: root.secondaryForeground; font.pixelSize: Style.space(11)
                     elide: Text.ElideRight
@@ -1246,12 +1243,12 @@ Panel {
                     spacing: Style.space(3)
                     ClockLabel {
                       width: parent.width; elide: Text.ElideRight
-                      text: eventRow.modelData.title || root.localText("Avtale uten tittel", "Untitled event")
+                      text: eventRow.modelData.title || FoamyI18n.t("Untitled event")
                       color: eventRow.agendaStatus === "past" ? root.secondaryForeground : root.contentForeground
                     }
                     ClockLabel {
                       width: parent.width; elide: Text.ElideRight
-                      text: (eventRow.agendaStatus === "ongoing" ? root.localText("Nå · ", "Now · ") : "")
+                      text: (eventRow.agendaStatus === "ongoing" ? FoamyI18n.t("Now · ") : "")
                         + root.eventTimeText(eventRow.modelData) + " · " + root.eventDetails(eventRow.modelData)
                       color: root.secondaryForeground; font.pixelSize: Style.space(11)
                     }
@@ -1263,7 +1260,7 @@ Panel {
                   }
                   PanelToolTip {
                     visible: eventMouse.containsMouse
-                    text: (eventRow.modelData.title || root.localText("Avtale uten tittel", "Untitled event"))
+                    text: (eventRow.modelData.title || FoamyI18n.t("Untitled event"))
                       + "\n" + root.eventTimeText(eventRow.modelData) + " · " + root.eventDetails(eventRow.modelData)
                     fontFamily: root.contentFontFamily
                   }
@@ -1285,7 +1282,7 @@ Panel {
                   size: Style.space(26); fontSize: Style.space(14)
                   width: calendarButtonContent.implicitWidth + Style.space(12)
                   fontFamily: root.contentFontFamily; foreground: root.secondaryForeground
-                  tooltipText: root.localText("Åpne kalender", "Open calendar")
+                  tooltipText: FoamyI18n.t("Open calendar")
                   onClicked: root.openCalendar()
                   Row {
                     id: calendarButtonContent
@@ -1299,7 +1296,7 @@ Panel {
                     }
                     ClockLabel {
                       anchors.verticalCenter: parent.verticalCenter
-                      text: root.localText("Kalender", "Calendar")
+                      text: FoamyI18n.t("Calendar")
                       font.pixelSize: Style.space(11)
                       color: root.secondaryForeground
                     }
@@ -1323,7 +1320,7 @@ Panel {
                   PanelToolTip {
                     visible: updateStatusMouse.containsMouse
                     text: root.agendaState === "partial"
-                      ? root.localText("Noen avtaler kan mangle. Åpne kalenderen for full oversikt.", "Some events may be missing. Open calendar for the full view.")
+                      ? FoamyI18n.t("Some events may be missing. Open calendar for the full view.")
                       : updateStatus.text
                     fontFamily: root.contentFontFamily
                   }
@@ -1336,7 +1333,7 @@ Panel {
                   iconSize: Style.space(15)
                   iconName: "refresh-cw"
                   foreground: root.secondaryForeground
-                  tooltipText: root.agendaLoading ? root.localText("Oppdaterer kalendere", "Refreshing calendars") : root.localText("Oppdater kalendere", "Refresh calendars")
+                  tooltipText: root.agendaLoading ? FoamyI18n.t("Refreshing calendars") : FoamyI18n.t("Refresh calendars")
                   enabled: !root.agendaLoading
                   spinning: root.opened && !root.editingSettings && root.agendaLoading
                   onClicked: root.refreshAgenda(true)
