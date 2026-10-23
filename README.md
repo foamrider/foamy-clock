@@ -19,7 +19,7 @@ omarchy plugin add https://github.com/foamrider/foamy-clock.git --enable
 
 - Left-click the clock to open the calendar. Select a day to see its events.
 - Use the arrows to change month; click the header to return to today.
-- Open the cog to change language, time format, and agenda settings.
+- Open the cog to change time format, and agenda settings.
 - Right-click the bar clock to cycle formats. Middle-click opens the timezone picker.
 
 The calendar shortcut opens GNOME Calendar by default; change it in settings.
@@ -96,3 +96,7 @@ Licensed under [MIT](LICENSE), with [Omarchy](LICENSE-OMARCHY) and
 [Lucide](LICENSE-LUCIDE) notices.
 
 Provided **as is**, without warranty or guaranteed support. Use at your own risk.
+
+Language follows **Omarchy → Setup → Language** on Omarchy 4.5. Plugin language overrides are no longer used. Omarchy 4.0 displays interface text in English while keeping the system date locale and week start. Missing translations fall back to English.
+
+Translation checks: `python3 tests/i18n-runtime.py` uses the installed shell. Set `OMARCHY_PATH` to a 4.5 source tree to check live language switching against that version.

@@ -35,7 +35,7 @@ const agendaProcess = process()
 const deferred = []
 const context = vm.createContext({root, cacheProcess, agendaProcess, Model,
   Qt: {callLater: fn => deferred.push(fn)},
-  agendaScroll: {contentY: 0}, localText: (_nb, en) => en})
+  agendaScroll: {contentY: 0}, FoamyI18n: {t: (key, values) => require("./i18n.cjs").text(key, "en", values), number: String}})
 vm.runInContext(functions + status, context)
 for (const key of ['monthIsCurrent', 'showDay', 'showSelectedDay', 'requestAgendaDate', 'refreshAgenda', 'resetAgendaView', 'prefetchRanges', 'schedulePrefetch', 'finishPrefetch']) root[key] = context[key]
 for (const range of root.prefetchRanges()) root.prefetchAttempts[range.start + ':' + range.end] = Date.now()

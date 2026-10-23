@@ -17,7 +17,7 @@ Column {
   signal save(string key, var value)
   signal back()
   signal clearError()
-  function tr(text) { return Preferences.text(text, language) }
+  function tr(text) { return FoamyI18n.t(text) }
   function focusBack() { backButton.forceActiveFocus() }
   readonly property color secondaryForeground: Qt.tint(Color.popups.background, Qt.alpha(Color.popups.text, 0.7))
   spacing: Style.space(14)
@@ -50,7 +50,7 @@ Column {
   }
   Repeater {
     model: [
-      {title:"Display", keys:["language", "locale", "weekStartDay", "timeFormat", "showSeconds", "showTimeZone"]},
+      {title:"Display", keys:["locale", "weekStartDay", "timeFormat", "showSeconds", "showTimeZone"]},
       {title:"Bar formats", keys:["format", "formatAlt", "verticalFormat", "verticalFormatAlt"]},
       {title:"Agenda", keys:["agendaEnabled", "agendaRefreshMinutes", "calendarApp", "showEventLocations"]}
     ]
@@ -88,7 +88,7 @@ Column {
             if (!hasPresets) return []
             var vertical = modelData.indexOf("vertical") === 0
             var formats = Model.clockFormatRing(spec.defaultValue, "", Model.clockFormats(vertical))
-            var locale = Qt.locale(Preferences.localeName(root.settings, Qt.locale().name))
+            var locale = Qt.locale(Preferences.localeName(root.settings, FoamyI18n.formatLocale))
             var example = new Date(2030, 8, 25, 14, 35, 42)
             return formats.map(function(format) {
               var preview = locale.toString(example, format.replace(/ww/g, Model.isoWeekLiteral(2030, 8, 25)))

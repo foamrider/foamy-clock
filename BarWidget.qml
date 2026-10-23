@@ -18,9 +18,9 @@ BarWidget {
   property date displayDate: clock.date
 
   function preference(key) { return Preferences.value(root.settings, key) }
-  readonly property string language: Preferences.language(preference("language"), Qt.locale().name)
-  function tr(text) { return Preferences.text(text, language) }
-  readonly property string localeName: Preferences.localeName(root.settings, Qt.locale().name)
+  readonly property string language: FoamyI18n.language
+  function tr(text) { return FoamyI18n.t(text) }
+  readonly property string localeName: Preferences.localeName(root.settings, FoamyI18n.formatLocale)
   readonly property var displayLocale: Qt.locale(localeName)
   readonly property string configuredFormat: preference(vertical ? "verticalFormat" : "format")
   readonly property string configuredAltFormat: preference(vertical ? "verticalFormatAlt" : "formatAlt")

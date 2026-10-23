@@ -17,7 +17,6 @@
     "category": "Time",
     "allowMultiple": false,
     "defaults": {
-      "language": "system",
       "locale": "",
       "format": "ddd d MMM '' HH:mm",
       "formatAlt": "d MMMM 'W'ww yyyy",
@@ -33,17 +32,6 @@
       "showEventLocations": true
     },
     "schema": [
-      {
-        "key": "language",
-        "type": "enum",
-        "label": "Language",
-        "defaultValue": "system",
-        "options": [
-          "system",
-          "nb",
-          "en"
-        ]
-      },
       {
         "key": "locale",
         "type": "string",

@@ -1,17 +1,6 @@
 // Shared validation and translations for shell.json settings.
 var fields = [
   {
-    "key": "language",
-    "type": "enum",
-    "label": "Language",
-    "defaultValue": "system",
-    "options": [
-      "system",
-      "nb",
-      "en"
-    ]
-  },
-  {
     "key": "locale",
     "type": "string",
     "label": "Date locale",
@@ -107,47 +96,7 @@ var fields = [
     "defaultValue": true
   }
 ]
-var norwegian = {
-  "Language": "Språk",
-  "Date locale": "Datoformat (språk/region)",
-  "Bar format": "Format i linjen",
-  "Alternate format": "Alternativt format",
-  "Vertical format": "Vertikalt format",
-  "Vertical alternate": "Vertikalt alternativ",
-  "Week starts on": "Uken starter på",
-  "Time format": "Tidsformat",
-  "Show seconds": "Vis sekunder",
-  "Show timezone": "Vis tidssone",
-  "Show agenda": "Vis avtaler",
-  "Refresh interval (min)": "Oppdateringsintervall (min)",
-  "Calendar app": "Kalenderapp",
-  "Show event locations": "Vis avtalesteder",
-  "Settings": "Innstillinger",
-  "Back": "Tilbake",
-  "Display": "Visning",
-  "Bar formats": "Formater i linjen",
-  "Agenda": "Avtaler",
-  "System": "System",
-  "Custom": "Egendefinert",
-  "System locale": "Systemets språk/region",
-  "24-hour": "24-timers",
-  "12-hour": "12-timers",
-  "locale": "System",
-  "monday": "Mandag",
-  "tuesday": "Tirsdag",
-  "wednesday": "Onsdag",
-  "thursday": "Torsdag",
-  "friday": "Fredag",
-  "saturday": "Lørdag",
-  "sunday": "Søndag",
-  "Saving…": "Lagrer…",
-  "Could not save settings.": "Kunne ikke lagre innstillingene.",
-  "Invalid setting.": "Ugyldig innstilling.",
-  "Calendar app could not be started.": "Kalenderappen kunne ikke startes.",
-  "Right-click to change format": "Høyreklikk for å endre format",
-  "Use \\n for a line break": "Bruk \\n for linjeskift",
-  "Could not query calendars. Check Python and Evolution Data Server.": "Kunne ikke hente kalendere. Kontroller Python og Evolution Data Server."
-}
+
 function field(key) {
   for (var i = 0; i < fields.length; i++) if (fields[i].key === key) return fields[i]
   return null
@@ -170,11 +119,7 @@ function value(settings, key) {
   var spec = field(key)
   return spec ? (settings && valid(key, settings[key]) ? settings[key] : spec.defaultValue) : undefined
 }
-function language(mode, systemLocale) {
-  if (mode === "en" || mode === "nb") return mode
-  return /^(nb|nn|no)(_|-|$)/i.test(String(systemLocale || "")) ? "nb" : "en"
-}
-function text(label, lang) { return lang === "nb" ? (norwegian[label] || label) : label }
+
 function localeName(settings, systemLocale) { return value(settings, "locale") || systemLocale }
 function displayValue(key, value) { return String(value).replace(/\n/g, "\\n") }
 function parseValue(key, text) {
@@ -183,4 +128,4 @@ function parseValue(key, text) {
   return text.replace(/\\n/g, "\n").trim()
 }
 if (typeof module !== "undefined") module.exports = {fields:fields, field:field, valid:valid, value:value,
-  language:language, text:text, localeName:localeName, displayValue:displayValue, parseValue:parseValue}
+    localeName:localeName, displayValue:displayValue, parseValue:parseValue}
