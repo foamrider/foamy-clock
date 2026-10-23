@@ -5,7 +5,7 @@ QtObject {
   id: root
   property var backend: null
   readonly property string language: backend ? backend.language : "en"
-  readonly property string formatLocale: backend ? backend.formatLocale : "en-US"
+  readonly property string formatLocale: backend ? backend.formatLocale : Qt.locale().name
   readonly property bool rightToLeft: backend ? backend.rightToLeft : false
 
   Component.onCompleted: {

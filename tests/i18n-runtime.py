@@ -41,6 +41,10 @@ ShellRoot {
     property int step: 0
     interval: 250; running: true; repeat: true
     onTriggered: {
+      if (!NATIVE && (translator.formatLocale !== Qt.locale().name
+          || Qt.locale(translator.formatLocale).firstDayOfWeek !== Qt.locale().firstDayOfWeek)) {
+        console.error("Compatibility locale must preserve system calendar conventions"); Qt.exit(5); return
+      }
       var expected = NATIVE && step === 0 ? TRANSLATED : KEY
       if (rendered !== expected) { console.error("Wrong translation", step, rendered, expected); Qt.exit(1); return }
       if (translator.t("English only") !== "English only" || translator.t("Unknown label") !== "Unknown label") { Qt.exit(2); return }
@@ -56,7 +60,7 @@ ShellRoot {
 '''
     qml = qml.replace('LANGUAGE_FILE', json.dumps(str(language))).replace('TRANSLATED', json.dumps(catalog[key])).replace('KEY', json.dumps(key)).replace('NATIVE', str(native).lower())
     (app / 'shell.qml').write_text(qml)
-    env = dict(os.environ, OMARCHY_PATH=str(omarchy), OMARCHY_LANGUAGE_FILE=str(language),
+    env = dict(os.environ, LC_ALL='nb_NO.UTF-8', OMARCHY_PATH=str(omarchy), OMARCHY_LANGUAGE_FILE=str(language),
                XDG_RUNTIME_DIR=str(runtime), QT_QPA_PLATFORM='offscreen',
                QT_QPA_PLATFORMTHEME='generic', QT_QUICK_BACKEND='software')
     env.pop('WAYLAND_DISPLAY', None)
