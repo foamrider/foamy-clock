@@ -6,11 +6,12 @@ const Model = require('../Model.js')
 
 // Run the actual QML request and selection functions against a loaded month.
 // A warm day click must neither start a process nor cancel the month refresh.
-const panel = fs.readFileSync(path.join(__dirname, '..', 'Panel.qml'), 'utf8')
-const functions = panel.slice(panel.indexOf('  function monthIsCurrent()'), panel.indexOf('  function agendaMessageText()'))
-const status = panel.slice(panel.indexOf('  function updatedAgoText()'), panel.indexOf('  function eventState('))
+const service = fs.readFileSync(path.join(__dirname, '..', 'ClockService.qml'), 'utf8')
+const view = fs.readFileSync(path.join(__dirname, '..', 'ClockView.qml'), 'utf8')
+const functions = service.slice(service.indexOf('  function monthIsCurrent()'), service.indexOf('  function goToToday()'))
+const status = view.slice(view.indexOf('  function updatedAgoText()'), view.indexOf('  function agendaMessageText()'))
 const root = {
-  agendaEnabled: true, selectedDateKey: '2026-08-31',
+  agendaReset() {}, agendaEnabled: true, activated: true, get agendaActive() { return this.agendaEnabled && this.activated }, selectedDateKey: '2026-08-31',
   agendaRangeStartKey: '2026-08-31', agendaRangeEndKey: '2026-10-12',
   agendaRangeKey: '2026-08-31:2026-10-12',
   monthView: null, pendingMonth: null, calendarDates: {}, agendaEvents: [],
@@ -33,9 +34,9 @@ function process() {
 const cacheProcess = process()
 const agendaProcess = process()
 const deferred = []
-const context = vm.createContext({root, cacheProcess, agendaProcess, Model,
+const context = vm.createContext({root, service: root, cacheProcess, agendaProcess, Model,
   Qt: {callLater: fn => deferred.push(fn)},
-  agendaScroll: {contentY: 0}, FoamyI18n: {t: (key, values) => require("./i18n.cjs").text(key, "en", values), number: String}})
+  FoamyI18n: {t: (key, values) => require("./i18n.cjs").text(key, "en", values), tn: (key, count) => require("./i18n.cjs").plural(key, "en", count), number: String}})
 vm.runInContext(functions + status, context)
 for (const key of ['monthIsCurrent', 'showDay', 'showSelectedDay', 'requestAgendaDate', 'refreshAgenda', 'resetAgendaView', 'prefetchRanges', 'schedulePrefetch', 'finishPrefetch']) root[key] = context[key]
 for (const range of root.prefetchRanges()) root.prefetchAttempts[range.start + ':' + range.end] = Date.now()
@@ -188,6 +189,16 @@ assert.equal(root.agendaPrefetch, false)
 assert.equal(root.agendaForceRefresh, true)
 assert.equal(root.agendaRefreshPending, false)
 agendaProcess.running = false
+
+// Before the first popup open nothing reaches Evolution (no cache read either).
+root.activated = false
+root.prefetchAttempts = {}
+const idleStarts = starts
+root.monthView = null
+root.requestAgendaDate(); root.refreshAgenda(true); root.schedulePrefetch()
+assert.equal(starts, idleStarts)
+root.activated = true
+root.monthView = {...header, events}
 
 // Disabled agenda schedules nothing; stale due times resume on re-enable.
 root.agendaEnabled = false
