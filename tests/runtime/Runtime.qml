@@ -35,6 +35,10 @@ ShellRoot {
     }
   }
 
+  // Review round 1: a selection must not cut the dropdown's binding.
+  property string boundSetting: "a"
+  Clock.SettingsDropdown { id: bound; current: shell.boundSetting; options: ["a", "b", "c"] }
+
   function widget(i) { return bars.itemAt(i).widget }
   function panel(i) { return widget(i).children.filter(c => c.popup !== undefined)[0] }
 
@@ -72,6 +76,21 @@ ShellRoot {
       view.activateCursor()
       eq(service.selectedDateKey, view.cursorKey, "Enter selects the cursor day")
       eq(view.agendaCountText !== undefined, true, "count text available")
+      // Browsing months, then an arrow: the cursor lands in the shown month.
+      view.cursorKey = ""
+      service.goToToday()
+      var month = service.viewMonth
+      service.moveMonth(2)
+      view.moveCursor(1)
+      eq(service.viewMonth, (month + 2) % 12, "arrow after month browsing keeps the shown month")
+      eq(view.cursorKey, service.weeks[0].days.filter(d => d.inMonth)[0].key, "cursor starts on the shown month's first day")
+      view.moveCursor(1)
+      eq(Number(view.cursorKey.slice(8)), 2, "then moves within the shown month")
+      service.goToToday()
+      // Dropdown keeps following the setting after a selection (kit sets value on select).
+      bound.value = "b"; bound.changed("b")
+      shell.boundSetting = "c"
+      eq(bound.value, "c", "dropdown follows the stored setting after a selection")
       if (lang === "no" && host === "4.5") {
         eq(Clock.ClockService !== null, true, "service")
         check(view.heroDateText.indexOf(".") > 0, "Norwegian hero date uses the catalog pattern: " + view.heroDateText)

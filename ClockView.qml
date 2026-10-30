@@ -78,8 +78,20 @@ PanelKeyCatcher {
 
   // ---- The day cursor (keyboard and pointer), separate from the selection.
   property string cursorKey: ""
+  function visibleInGrid(key) {
+    return service.weeks.some(w => w.days.some(d => d.key === key))
+  }
   function moveCursor(days) {
-    var base = cursorKey !== "" ? cursorKey : service.selectedDateKey
+    // Start from the cursor, else the selected day, as long as it is on the
+    // shown grid. After browsing months (keys, chevrons, wheel) neither may
+    // be: the first press then lands on the shown month (today if it is in
+    // it, else its first day) instead of jumping back to the old month.
+    var base = cursorKey !== "" && visibleInGrid(cursorKey) ? cursorKey
+      : visibleInGrid(service.selectedDateKey) ? service.selectedDateKey : ""
+    if (base === "") {
+      cursorKey = service.viewingCurrentMonth ? service.todayKey : Model.dateKey(service.viewYear, service.viewMonth, 1)
+      return
+    }
     var parts = base.split("-").map(Number)
     var next = new Date(parts[0], parts[1] - 1, parts[2] + days)
     cursorKey = Model.keyForDate(next)
