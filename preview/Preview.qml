@@ -45,7 +45,7 @@ Item {
     bar: preview.bar
     open: true
     centerOnBar: true
-    contentHeight: popup.fittedContentHeight(popup.bodyImplicitHeight)
+    maxHeight: 0
     body: Component {
       Clock.ClockView {
         settings: ({})

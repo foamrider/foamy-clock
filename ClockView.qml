@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls as Controls
 import qs.Commons
 import qs.Commons as Commons
+import QtQuick.Layouts
 import qs.Ui
 import "kit"
 import "kit/FoamyPrefs.js" as Prefs
@@ -56,6 +57,14 @@ PanelKeyCatcher {
     return catalogDates ? FoamyI18n.t(catalogKey) : Model.dateWithoutYear(displayLocale.dateFormat(Locale.LongFormat))
   }
   readonly property string heroDateText: displayLocale.toString(service.today, datePattern("dddd, MMMM d"))
+  // Band meta: week · year, then the zone when shown.
+  readonly property string heroMetaText: {
+    var week = FoamyI18n.t("Week %1 · %2", [
+      Model.isoWeek(service.today.getFullYear(), service.today.getMonth(), service.today.getDate()),
+      service.today.getFullYear()])
+    var zone = root.preference("showTimeZone") ? (service.timeZoneName || Qt.formatDateTime(service.now, "t")) : ""
+    return zone !== "" ? week + " · " + zone : week
+  }
   readonly property string agendaDateLabel: service.selectedDateIsToday
     ? FoamyI18n.t("Today")
     : displayLocale.toString(service.selectedDate, catalogDates ? FoamyI18n.t("ddd, MMM d")
@@ -211,65 +220,24 @@ PanelKeyCatcher {
       id: calendarColumn
       width: parent.width
 
-      Item {
+      // The foamy hero band: the date and week in the title row, the clock
+      // face in the hero slot. Clicking the face goes back to today.
+      FoamyHeroBand {
         id: hero
         width: parent.width
-        height: heroContent.implicitHeight + Style.space(root.veryShortHeight ? 16 : root.compactHeight ? 24 : 49)
+        iconName: "calendar"
+        title: root.heroDateText
+        meta: root.heroMetaText
+        onSettingsClicked: root.settingsRequested()
+        onSettingsHovered: function(hovered) { if (hovered) root.cursorKey = "" }
 
-        // The foamy header wash (static; the seconds never repaint it).
-        Canvas {
-          id: headerBackground
-          readonly property real cornerRadius: Math.max(0, Math.min(width / 2, height, FoamyStyle.radius - 1))
-          onCornerRadiusChanged: requestPaint()
-          anchors.fill: parent
-          onWidthChanged: requestPaint()
-          onHeightChanged: requestPaint()
-          onPaint: {
-            var ctx = getContext("2d")
-            ctx.reset()
-            var radius = cornerRadius
-            ctx.beginPath()
-            ctx.moveTo(radius, 0); ctx.lineTo(width - radius, 0)
-            ctx.arcTo(width, 0, width, radius, radius)
-            ctx.lineTo(width, height); ctx.lineTo(0, height); ctx.lineTo(0, radius)
-            ctx.arcTo(0, 0, radius, 0, radius); ctx.closePath(); ctx.clip()
-            var accent = Commons.Color.accent
-            var gradient = ctx.createLinearGradient(0, 0, width * 0.5, height)
-            gradient.addColorStop(0, Qt.tint(Commons.Color.popups.background, Qt.rgba(accent.r, accent.g, accent.b, 0.08)))
-            gradient.addColorStop(1, Commons.Color.popups.background)
-            ctx.fillStyle = gradient; ctx.fillRect(0, 0, width, height)
-            var glowX = LayoutMirroring.enabled ? width * 0.1 : width * 0.9
-            var glow = ctx.createRadialGradient(glowX, 0, 0, glowX, 0, width * 0.85)
-            glow.addColorStop(0, Qt.rgba(accent.r, accent.g, accent.b, 0.17))
-            glow.addColorStop(1, "transparent")
-            ctx.fillStyle = glow; ctx.fillRect(0, 0, width, height)
-          }
-          Connections {
-            target: Commons.Color
-            function onAccentChanged() { headerBackground.requestPaint() }
-            function onShellValuesChanged() { headerBackground.requestPaint() }
-            function onBackgroundChanged() { headerBackground.requestPaint() }
-          }
-        }
-
-        Column {
-          id: heroContent
-          anchors.centerIn: parent
-          width: parent.width - Style.space(28)
-          spacing: Style.space(root.compactHeight ? 5 : 9)
-
-          ClockLabel {
-            visible: !root.veryShortHeight && root.preference("showTimeZone")
-            width: parent.width - Style.space(64)
-            anchors.horizontalCenter: parent.horizontalCenter
-            horizontalAlignment: Text.AlignHCenter
-            text: service.timeZoneName || Qt.formatDateTime(service.now, "t")
-            font.pixelSize: FoamyStyle.font.body
-            elide: Text.ElideRight
-          }
+        Item {
+          Layout.fillWidth: true
+          implicitHeight: faceRow.implicitHeight
 
           Row {
-            anchors.horizontalCenter: parent.horizontalCenter
+            id: faceRow
+            anchors.left: parent.left
             spacing: Style.space(5)
             height: heroClock.implicitHeight
             // Times read left to right in every language.
@@ -301,61 +269,26 @@ PanelKeyCatcher {
             }
           }
 
-          Column {
-            width: parent.width
-            spacing: Style.space(5)
-            ClockLabel {
-              width: parent.width
-              horizontalAlignment: Text.AlignHCenter
-              text: root.heroDateText
-              font.pixelSize: root.compactHeight ? FoamyStyle.font.title : FoamyStyle.font.iconLarge
-              wrapMode: Text.WordWrap
-            }
-            ClockLabel {
-              visible: !root.veryShortHeight
-              width: parent.width
-              horizontalAlignment: Text.AlignHCenter
-              text: FoamyI18n.t("Week %1 · %2", [
-                Model.isoWeek(service.today.getFullYear(), service.today.getMonth(), service.today.getDate()),
-                service.today.getFullYear()])
-              color: FoamyPalette.secondaryText
-              font.pixelSize: FoamyStyle.font.body
+          MouseArea {
+            id: heroMouse
+            anchors.fill: faceRow
+            enabled: !service.viewingCurrentMonth || !service.selectedDateIsToday
+            hoverEnabled: enabled
+            cursorShape: Qt.PointingHandCursor
+            onClicked: { root.cursorKey = ""; service.goToToday() }
+            PanelToolTip {
+              visible: heroMouse.containsMouse
+              text: FoamyI18n.t("Back to today")
+              fontFamily: FoamyStyle.fontFamily
             }
           }
-        }
-
-        MouseArea {
-          id: heroMouse
-          anchors.fill: parent
-          enabled: !service.viewingCurrentMonth || !service.selectedDateIsToday
-          hoverEnabled: enabled
-          cursorShape: Qt.PointingHandCursor
-          onClicked: { root.cursorKey = ""; service.goToToday() }
-          PanelToolTip {
-            visible: heroMouse.containsMouse
-            text: FoamyI18n.t("Back to today")
-            fontFamily: FoamyStyle.fontFamily
-          }
-        }
-        FoamyAction {
-          id: settingsButton
-          anchors.top: parent.top
-          anchors.right: parent.right
-          anchors.topMargin: FoamyStyle.gapLarge
-          anchors.rightMargin: FoamyStyle.sectionGap
-          settings: true
-          iconName: "settings"
-          foreground: FoamyPalette.secondaryText
-          tooltipText: FoamyI18n.t("Settings")
-          onClicked: root.settingsRequested()
-          onHoveredChanged: if (hovered) root.cursorKey = ""
         }
       }
 
       Item {
         id: heroBoundary
         width: parent.width
-        height: Style.space(10)
+        height: FoamyStyle.sectionGap
       }
 
       Column {
