@@ -437,5 +437,117 @@ class CalendarEventsTest(unittest.TestCase):
                 output.assert_not_called()
 
 
+    def test_floating_times_use_the_local_default_timezone(self):
+        """EDS resolves floating DATE-TIMEs with the client default zone (UTC unless set)."""
+        oslo = object()
+        calls = []
+
+        class Occurrence:
+            def __init__(self, hour): self.hour = hour
+            def is_date(self): return False
+            def get_timezone(self): return None  # floating: no TZID, no Z
+            def as_timet_with_zone(self, zone):
+                # 09:00 floating is 08:00 UTC in Oslo (CET), 09:00 UTC in UTC.
+                offset = 3600 if zone is oslo else 0
+                return int(datetime(2026, 10, 30, self.hour, tzinfo=timezone.utc).timestamp()) - offset
+
+        component = SimpleNamespace(get_status=lambda: "ok", get_summary=lambda: "Standup", get_location=lambda: "", get_uid=lambda: "floating")
+        client = SimpleNamespace(set_default_timezone=lambda zone: calls.append(zone),
+                                 get_default_timezone=lambda: calls[-1] if calls else "utc",
+                                 generate_instances_sync=lambda _s, _e, _c, callback, _d: callback(component, Occurrence(9), Occurrence(10), None, None))
+        ecal = SimpleNamespace(Client=SimpleNamespace(connect_sync=lambda *_: client), ClientSourceType=SimpleNamespace(EVENTS=1))
+        ical = SimpleNamespace(PropertyStatus=SimpleNamespace(CANCELLED="cancelled"))
+        start = datetime(2026, 10, 30, tzinfo=ZoneInfo("Europe/Oslo"))
+        events, error = CALENDAR_EVENTS.fetch_source_events(SimpleNamespace(get_uid=lambda: "calendar"), "Work", "", start, start + timedelta(days=1), ecal, ical, "day", oslo)
+        self.assertEqual(error, "")
+        self.assertEqual(calls, [oslo])
+        self.assertEqual(datetime.fromtimestamp(events[0]["start"], ZoneInfo("Europe/Oslo")).hour, 9)
+
+    def test_ical_timezone_maps_iana_keys_only(self):
+        lookups = []
+        ical = SimpleNamespace(Timezone=SimpleNamespace(get_builtin_timezone=lambda key: lookups.append(key) or key))
+        self.assertEqual(CALENDAR_EVENTS.ical_timezone(ical, ZoneInfo("Europe/Oslo")), "Europe/Oslo")
+        self.assertIsNone(CALENDAR_EVENTS.ical_timezone(ical, timezone.utc))
+        self.assertEqual(lookups, ["Europe/Oslo"])
+
+    def test_real_libical_floating_time_follows_local_zone(self):
+        try:
+            import gi
+            gi.require_version("ICalGLib", "4.0")
+            from gi.repository import ICalGLib
+        except (ImportError, ValueError):
+            self.skipTest("ICalGLib not installed")
+        zone = CALENDAR_EVENTS.ical_timezone(ICalGLib, ZoneInfo("Europe/Oslo"))
+        floating = ICalGLib.Time.new_from_string("20261030T090000")
+        stamp = CALENDAR_EVENTS.unix_timestamp(floating, zone)
+        self.assertEqual(datetime.fromtimestamp(stamp, ZoneInfo("Europe/Oslo")).strftime("%H:%M"), "09:00")
+
+    def test_local_timezone_accepts_paths_names_and_bad_values(self):
+        oslo = Path("/usr/share/zoneinfo/Europe/Oslo")
+        if not oslo.exists():
+            self.skipTest("zoneinfo not installed")
+        cases = {":Europe/Oslo": "Europe/Oslo", "Europe/Oslo": "Europe/Oslo",
+                 ":" + str(oslo): "Europe/Oslo", str(oslo): "Europe/Oslo"}
+        for value, key in cases.items():
+            with patch.dict("os.environ", {"TZ": value}):
+                self.assertEqual(CALENDAR_EVENTS.local_timezone().key, key, value)
+        localtime = CALENDAR_EVENTS.zone_from_file(Path("/etc/localtime")).key if Path("/etc/localtime").exists() else "UTC"
+        for value in (":/etc/localtime", "/etc/localtime", "Not/AZone", "CET-1CEST,M3.5.0,M10.5.0/3", ":/nonexistent/zone"):
+            with patch.dict("os.environ", {"TZ": value}):
+                zone = CALENDAR_EVENTS.local_timezone()
+                # Unusable values fall back to /etc/localtime instead of raising.
+                self.assertEqual(zone.key, localtime, value)
+        with patch.dict("os.environ", {"TZ": ":/etc/localtime"}), TemporaryDirectory() as directory:
+            # read_cache must not raise even with an unusual TZ.
+            self.assertEqual(CALENDAR_EVENTS.read_cache(Path(directory) / "missing.json")["views"], {})
+
+    def test_cached_reads_never_rewrite_fresher_data(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            older = self.payload(start=date(2026, 8, 24))
+            newer = self.payload(start=date(2026, 8, 25))
+            CALENDAR_EVENTS.store_view(older, path)
+            CALENDAR_EVENTS.store_view(newer, path)
+            stamp = path.stat().st_mtime_ns
+            # Already most recent: no write at all.
+            self.assertFalse(CALENDAR_EVENTS.touch_view("day", date(2026, 8, 25), date(2026, 8, 26), path))
+            self.assertEqual(path.stat().st_mtime_ns, stamp)
+            # Another bridge stores fresh data for the older key; a touch keeps it.
+            fresh = self.payload(start=date(2026, 8, 24))
+            fresh["events"] = [self.event()]
+            fresh["updatedAt"] = 999999
+            CALENDAR_EVENTS.store_view(fresh, path)
+            CALENDAR_EVENTS.touch_view("day", date(2026, 8, 25), date(2026, 8, 26), path)
+            views = CALENDAR_EVENTS.read_cache(path)["views"]
+            self.assertEqual(views["day:2026-08-24:2026-08-25"]["updatedAt"], 999999)
+            self.assertEqual(list(views)[-1], "day:2026-08-25:2026-08-26")
+
+    def test_cache_writes_wait_for_the_lock_and_give_up_when_held(self):
+        import fcntl
+        import os
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            path.parent.mkdir(exist_ok=True)
+            holder = os.open(path.parent / ".agenda.lock", os.O_RDWR | os.O_CREAT, 0o600)
+            try:
+                fcntl.flock(holder, fcntl.LOCK_EX)
+                with patch.object(CALENDAR_EVENTS, "CACHE_LOCK_SECONDS", 0.1):
+                    began = time.monotonic()
+                    self.assertFalse(CALENDAR_EVENTS.store_view(self.payload(), path))
+                    self.assertLess(time.monotonic() - began, 1.0)
+                self.assertFalse(path.exists())
+            finally:
+                os.close(holder)
+            self.assertTrue(CALENDAR_EVENTS.store_view(self.payload(), path))
+
+    def test_writing_the_cache_deletes_legacy_versions(self):
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            for name in ("agenda-v1.json", "agenda-v2.json", "notes.json"):
+                (folder / name).write_text("{}")
+            path = folder / f"agenda-v{CALENDAR_EVENTS.CACHE_VERSION}.json"
+            self.assertTrue(CALENDAR_EVENTS.store_view(self.payload(), path))
+            self.assertEqual(sorted(p.name for p in folder.iterdir() if not p.name.startswith(".")), ["agenda-v3.json", "notes.json"])
+
 if __name__ == "__main__":
     unittest.main()

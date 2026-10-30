@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time, timedelta
+import fcntl
 import hashlib
 import json
 import os
@@ -18,7 +20,7 @@ import sys
 import tempfile
 import time as monotonic_time
 from typing import Any
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 DEFAULT_COLOR = ""
 UNTITLED_EVENT = "Untitled event"
@@ -33,6 +35,7 @@ MAX_MONTH_EVENTS = 1000
 MAX_MONTH_BYTES = 2 * 1024 * 1024
 MAX_CACHE_BYTES = 8 * 1024 * 1024
 MAX_CACHE_ENTRIES = 8
+CACHE_LOCK_SECONDS = 2.0
 WORKER_MEMORY_BYTES = 512 * 1024 * 1024
 WORKER_SECONDS = 45
 TEXT_LIMITS = {"title": 256, "location": 128, "calendar": 80}
@@ -74,11 +77,41 @@ def unix_timestamp(value: Any, fallback_timezone: Any) -> int:
     return int(value.as_timet_with_zone(value.get_timezone() or fallback_timezone))
 
 
+def zone_from_file(path: Path) -> Any:
+    """A zone from a TZif file, keyed by its IANA name when it lives under zoneinfo/."""
+    resolved = path.resolve()
+    match = re.search(r"/zoneinfo/(.+)$", str(resolved))
+    with open(resolved, "rb") as handle:
+        return ZoneInfo.from_file(handle, key=match.group(1) if match else str(resolved))
+
+
 def local_timezone() -> Any:
-    if os.environ.get("TZ"):
-        return ZoneInfo(os.environ["TZ"].removeprefix(":"))
-    with open("/etc/localtime", "rb") as handle:
-        return ZoneInfo.from_file(handle, key=str(Path("/etc/localtime").resolve()))
+    """The session's zone: TZ (IANA name, ':name' or an absolute TZif path), else /etc/localtime.
+
+    Never raises: an unusable TZ falls back to /etc/localtime, and an unreadable
+    /etc/localtime to UTC, so the bridge can always answer the shell.
+    """
+    value = os.environ.get("TZ", "").removeprefix(":")
+    if value:
+        try:
+            return zone_from_file(Path(value)) if value.startswith("/") else ZoneInfo(value)
+        except (OSError, ValueError, ZoneInfoNotFoundError):
+            pass
+    try:
+        return zone_from_file(Path("/etc/localtime"))
+    except (OSError, ValueError):
+        return ZoneInfo("UTC")
+
+
+def ical_timezone(ical: Any, zone: Any) -> Any:
+    """libical's built-in zone for an IANA key, or None (EDS then keeps its own default)."""
+    key = getattr(zone, "key", None) or ""
+    if not key or key.startswith("/"):
+        return None
+    try:
+        return ical.Timezone.get_builtin_timezone(key)
+    except Exception:
+        return None
 
 
 def overlaps(event: dict[str, Any], day: date, timezone: Any) -> bool:
@@ -164,7 +197,8 @@ class MonthBuilder:
 
 def fetch_source_events(source: Any, source_name: str, source_color: str,
                         range_start: datetime, range_end: datetime,
-                        ecal: Any, ical: Any, kind: str = "day") -> tuple[Any, str]:
+                        ecal: Any, ical: Any, kind: str = "day",
+                        default_timezone: Any = None) -> tuple[Any, str]:
     events: list[dict[str, Any]] = []
     month = MonthBuilder(range_start.date(), range_end.date()) if kind == "month" else None
     limited = False
@@ -172,6 +206,10 @@ def fetch_source_events(source: Any, source_name: str, source_color: str,
     callback_failed = False
     try:
         client = ecal.Client.connect_sync(source, ecal.ClientSourceType.EVENTS, 2, None)
+        # Floating DATE-TIMEs (no TZID, no Z) resolve with the client's default
+        # zone, which is UTC until set. Set it before any fetch (ECal docs).
+        if default_timezone is not None:
+            client.set_default_timezone(default_timezone)
         source_id = stable_id(source.get_uid() or "")
         days = [range_start.date() + timedelta(days=i)
                 for i in range((range_end.date() - range_start.date()).days)]
@@ -192,8 +230,9 @@ def fetch_source_events(source: Any, source_name: str, source_color: str,
                 event = {"allDay": True, "start": 0, "end": 0,
                          "startDate": start.isoformat(), "endDate": end.isoformat()}
             else:
-                start = unix_timestamp(instance_start, client.get_default_timezone())
-                end = max(start, unix_timestamp(instance_end, client.get_default_timezone()))
+                fallback_zone = default_timezone or client.get_default_timezone()
+                start = unix_timestamp(instance_start, fallback_zone)
+                end = max(start, unix_timestamp(instance_end, fallback_zone))
                 event = {"allDay": False, "start": start, "end": end,
                          "startDate": "", "endDate": ""}
             matching = [day.isoformat() for day in days if overlaps(event, day, range_start.tzinfo)]
@@ -248,6 +287,7 @@ def load_view(kind: str, start: date, end: date) -> dict[str, Any]:
     from gi.repository import ECal, EDataServer, ICalGLib
 
     zone = local_timezone()
+    default_timezone = ical_timezone(ICalGLib, zone)
     start_time, end_time = (datetime.combine(day, time.min, zone) for day in (start, end))
     registry = EDataServer.SourceRegistry.new_sync(None)
     sources = []
@@ -274,7 +314,7 @@ def load_view(kind: str, start: date, end: date) -> dict[str, Any]:
     # results bounded. Process limits also cover allocations inside GI/EDS.
     with ThreadPoolExecutor(max_workers=2) as pool:
         for offset in range(0, len(sources), 2):
-            futures = [pool.submit(fetch_source_events, *source, start_time, end_time, ECal, ICalGLib, kind)
+            futures = [pool.submit(fetch_source_events, *source, start_time, end_time, ECal, ICalGLib, kind, default_timezone)
                        for source in sources[offset:offset + 2]]
             for future in futures:
                 result, error = future.result()
@@ -371,9 +411,54 @@ def cache_key(kind: str, start: date, end: date) -> str:
     return f"{kind}:{start}:{end}"
 
 
-def read_cache(path: Path | None = None) -> dict[str, Any]:
-    empty = {"version": CACHE_VERSION, "zone": str(local_timezone()), "views": {}}
+@contextlib.contextmanager
+def cache_lock(path: Path):
+    """Serialize read-modify-write of the cache across bridges (one per request).
+
+    Yields False when the lock is not free within CACHE_LOCK_SECONDS; callers
+    then skip the write rather than block the shell's request.
+    """
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    descriptor = os.open(path.parent / ".agenda.lock", os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
     try:
+        deadline = monotonic_time.monotonic() + CACHE_LOCK_SECONDS
+        while True:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if monotonic_time.monotonic() >= deadline:
+                    yield False
+                    return
+                monotonic_time.sleep(0.02)
+        yield True
+    finally:
+        os.close(descriptor)
+
+
+def remove_legacy_caches(path: Path) -> None:
+    """Older cache versions hold event titles and locations; never keep them."""
+    for old in path.parent.glob("agenda-v*.json"):
+        match = re.fullmatch(r"agenda-v(\d+)\.json", old.name)
+        if match and int(match.group(1)) < CACHE_VERSION:
+            old.unlink(missing_ok=True)
+
+
+def write_cache(cache: dict[str, Any], path: Path) -> None:
+    descriptor, name = tempfile.mkstemp(dir=path.parent, prefix=".agenda-")
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(encode(cache))
+        os.replace(name, path)
+    finally:
+        Path(name).unlink(missing_ok=True)
+    remove_legacy_caches(path)
+
+
+def read_cache(path: Path | None = None) -> dict[str, Any]:
+    empty = {"version": CACHE_VERSION, "zone": "", "views": {}}
+    try:
+        empty["zone"] = str(local_timezone())
         with (path or default_cache_path()).open("rb") as handle:
             raw = handle.read(MAX_CACHE_BYTES + 1)
         if len(raw) > MAX_CACHE_BYTES:
@@ -401,25 +486,44 @@ def store_view(payload: dict[str, Any], path: Path | None = None) -> bool:
     if not valid_payload(payload) or payload["state"] not in ("ok", "partial"):
         return False
     path = path or default_cache_path()
-    cache = read_cache(path)
-    views = cache["views"]
-    key = cache_key(payload["kind"], date.fromisoformat(payload["date"]), date.fromisoformat(payload["rangeEnd"]))
-    old = views.get(key)
-    # Preserve complete data when a refresh only saw part of the calendar.
-    if payload["kind"] == "day" and old and old["complete"] and not payload["complete"]:
+    with cache_lock(path) as locked:
+        if not locked:
+            return False
+        cache = read_cache(path)
+        views = cache["views"]
+        key = cache_key(payload["kind"], date.fromisoformat(payload["date"]), date.fromisoformat(payload["rangeEnd"]))
+        old = views.get(key)
+        # Preserve complete data when a refresh only saw part of the calendar.
+        if payload["kind"] == "day" and old and old["complete"] and not payload["complete"]:
+            return False
+        views.pop(key, None)
+        views[key] = payload
+        while len(views) > MAX_CACHE_ENTRIES or len(encode(cache)) > MAX_CACHE_BYTES:
+            del views[next(iter(views))]
+        write_cache(cache, path)
+    return True
+
+
+def touch_view(kind: str, start: date, end: date, path: Path | None = None) -> bool:
+    """Move a cached view to the most-recently-used end, without rewriting its data.
+
+    Only writes when the order changes, and re-reads under the lock, so a
+    cached read can never put back an older snapshot over fresher data.
+    """
+    path = path or default_cache_path()
+    key = cache_key(kind, start, end)
+    views = read_cache(path)["views"]
+    if key not in views or next(reversed(views)) == key:
         return False
-    views.pop(key, None)
-    views[key] = payload
-    while len(views) > MAX_CACHE_ENTRIES or len(encode(cache)) > MAX_CACHE_BYTES:
-        del views[next(iter(views))]
-    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    descriptor, name = tempfile.mkstemp(dir=path.parent, prefix=".agenda-")
-    try:
-        with os.fdopen(descriptor, "wb") as handle:
-            handle.write(encode(cache))
-        os.replace(name, path)
-    finally:
-        Path(name).unlink(missing_ok=True)
+    with cache_lock(path) as locked:
+        if not locked:
+            return False
+        cache = read_cache(path)
+        views = cache["views"]
+        if key not in views or next(reversed(views)) == key:
+            return False
+        views[key] = views.pop(key)
+        write_cache(cache, path)
     return True
 
 
@@ -553,7 +657,7 @@ def main() -> int:
         payload = cached if arguments.cached or reusable else refreshed_view(kind, start, end)
         if (arguments.cached or reusable) and payload["state"] in ("ok", "partial"):
             try:
-                store_view(payload)
+                touch_view(kind, start, end)
             except OSError:
                 pass  # Cache access-order maintenance does not invalidate saved data.
         if not valid_payload(payload):
