@@ -1,9 +1,10 @@
-# foamy-kit 0.2.0 4ee89e0abaf258e0259ae42b9509085d60dcf41af82b87059d48bd2b6ace9f60 — do not edit; change foamy-kit and run sync
+# foamy-kit 0.3.0 8d7e76b0c9f55cdedfe48d7a4b67c6edbce2c83b86adcad80f9a1f361ce6406c — do not edit; change foamy-kit and run sync
 FoamyAction 1.0 FoamyAction.qml
 FoamyCursor 1.0 FoamyCursor.qml
 FoamyCursorSurface 1.0 FoamyCursorSurface.qml
 FoamyDropdown 1.0 FoamyDropdown.qml
 FoamyHeader 1.0 FoamyHeader.qml
+FoamyHeroBand 1.0 FoamyHeroBand.qml
 singleton FoamyI18n 1.0 FoamyI18n.qml
 FoamyIcon 1.0 FoamyIcon.qml
 FoamyIpc 1.0 FoamyIpc.qml
