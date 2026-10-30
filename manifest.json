@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "foamy.clock",
   "name": "Foamy Clock",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "foamrider",
   "description": "Configurable clock, calendar and local Evolution agenda",
   "kinds": [
@@ -91,13 +91,13 @@
       {
         "key": "showSeconds",
         "type": "boolean",
-        "label": "Show seconds",
+        "label": "Show seconds in the popup",
         "defaultValue": true
       },
       {
         "key": "showTimeZone",
         "type": "boolean",
-        "label": "Show timezone",
+        "label": "Show timezone in the popup",
         "defaultValue": true
       },
       {
@@ -109,7 +109,7 @@
       {
         "key": "agendaRefreshMinutes",
         "type": "integer",
-        "label": "Refresh interval (min)",
+        "label": "Refresh every",
         "defaultValue": 30,
         "min": 1,
         "max": 1440,

@@ -1,214 +1,215 @@
 import QtQuick
-import QtQuick.Controls as Controls
-import QtQuick.Layouts
-import qs.Ui
 import qs.Commons
-import "Preferences.js" as Preferences
+import qs.Commons as Commons
+import qs.Ui
+import "kit"
+import "kit/FoamyPrefs.js" as Prefs
 import "Model.js" as Model
+import "Preferences.js" as Schema
 
-Column {
+// The clock's settings, on the shared foamy settings page. Every change
+// saves at once through save(key, value) (BarWidget queues the writes).
+FoamySettingsPage {
   id: root
-  required property var settings
-  required property string language
-  property bool saving: false
-  property string error: ""
+
+  property var settings: ({})
   property bool formatsOpen: false
-  property alias backTarget: backButton
   signal save(string key, var value)
-  signal back()
-  signal clearError()
-  function tr(text) { return FoamyI18n.t(text) }
-  function focusBack() { backButton.forceActiveFocus() }
-  readonly property color secondaryForeground: Qt.tint(Color.popups.background, Qt.alpha(Color.popups.text, 0.7))
-  spacing: Style.space(14)
-  padding: Style.space(20)
-  component Label: Text {
-    color: Color.popups.text
-    font.family: "sans-serif"
-    font.pixelSize: Style.space(13)
-    textFormat: Text.PlainText
-    wrapMode: Text.WordWrap
+
+  function current(key) { return Prefs.value(Schema.fields, root.settings, key) }
+  function label(key) { return FoamyI18n.t(Schema.field(key).label) }
+  // "" follows the Omarchy language's date locale on 4.5, the system on 4.0.
+  readonly property string followLabel: FoamyI18n.translationsAvailable ? FoamyI18n.t("Omarchy language") : FoamyI18n.t("System")
+  readonly property var dateLocale: Qt.locale(Schema.localeName(root.current("locale"), FoamyI18n.formatLocale))
+
+  function formatOptions(key) {
+    var vertical = key.indexOf("vertical") === 0
+    var formats = Model.clockFormatRing(Schema.field(key).defaultValue, "", Model.clockFormats(vertical))
+    var example = new Date(2030, 8, 25, 14, 35, 42)
+    return formats.map(function(format) {
+      var preview = root.dateLocale.toString(example, format.replace(/ww/g, Model.isoWeekLiteral(2030, 8, 25)))
+      return {value: format, label: preview.replace(/\n/g, " · ")}
+    })
   }
-  RowLayout {
-    width: parent.width - root.padding * 2
-    ClockAction {
-      id: backButton
-      iconName: "arrow-left"
-      tooltipText: root.tr("Back")
-      foreground: root.secondaryForeground
-      onClicked: root.back()
-    }
-    Label { text: root.tr("Settings"); Layout.fillWidth: true; color: root.secondaryForeground }
-    Label { visible: root.saving; text: root.tr("Saving…"); font.pixelSize: Style.space(11); color: root.secondaryForeground }
-  }
-  Label {
-    visible: root.error !== ""
-    width: parent.width - root.padding * 2
-    text: root.error
-    color: Color.urgent
-    Accessible.role: Accessible.AlertMessage
-  }
-  Repeater {
-    model: [
-      {title:"Display", keys:["locale", "weekStartDay", "timeFormat", "showSeconds", "showTimeZone"]},
-      {title:"Bar formats", keys:["format", "formatAlt", "verticalFormat", "verticalFormatAlt"]},
-      {title:"Agenda", keys:["agendaEnabled", "agendaRefreshMinutes", "calendarApp", "showEventLocations"]}
-    ]
-    Column {
-      id: group
-      required property var modelData
-      width: root.width - root.padding * 2
-      spacing: Style.space(8)
-      Label { visible: group.modelData.title !== "Bar formats"; text: root.tr(group.modelData.title); font.bold: true }
-      ClockAction {
-        visible: group.modelData.title === "Bar formats"
-        label: root.tr("Bar formats")
-        iconName: root.formatsOpen ? "chevron-down" : "chevron-right"
-        foreground: root.secondaryForeground
-        onClicked: root.formatsOpen = !root.formatsOpen
+
+  // A preset dropdown with a "Custom" editor mode (never a stored value).
+  component PresetField: Column {
+    id: field
+    required property string key
+    property var presets: []
+    property bool glyphLabels: false
+    property string placeholder: ""
+    property string hint: ""
+    property bool customSelected: false
+    readonly property var value: root.current(key)
+    readonly property bool customMode: customSelected || !presets.some(function(o) { return o.value === field.value })
+    width: parent ? parent.width : 0
+    spacing: FoamyStyle.gapSmall
+
+    FoamyDropdown {
+      width: parent.width
+      label: root.label(field.key)
+      labelDelegate: field.glyphLabels ? glyphLabel : null
+      value: field.customMode ? "__custom" : String(field.value)
+      options: field.presets.concat([{value: "__custom", label: FoamyI18n.t("Custom")}])
+      onChanged: function(next) {
+        field.customSelected = next === "__custom"
+        if (field.customSelected) Qt.callLater(function() { editor.focusInput(); editor.selectAll() })
+        else if (next !== field.value) root.save(field.key, next)
       }
-      Repeater {
-        model: group.modelData.keys
-        Column {
-          id: fieldRow
-          required property string modelData
-          readonly property var spec: Preferences.field(modelData)
-          readonly property var current: Preferences.value(root.settings, modelData)
-          readonly property bool hasPresets: modelData === "locale" || group.modelData.title === "Bar formats"
-          // Custom is an editor mode, never a value written to shell.json.
-          property bool customSelected: false
-          readonly property var presetOptions: {
-            if (modelData === "locale") return [
-              {value:"", label:root.tr("System")},
-              {value:"nb_NO", label:"Norsk bokmål"},
-              {value:"nn_NO", label:"Norsk nynorsk"},
-              {value:"en_GB", label:"English (UK)"},
-              {value:"en_US", label:"English (US)"}
-            ]
-            if (!hasPresets) return []
-            var vertical = modelData.indexOf("vertical") === 0
-            var formats = Model.clockFormatRing(spec.defaultValue, "", Model.clockFormats(vertical))
-            var locale = Qt.locale(Preferences.localeName(root.settings, FoamyI18n.formatLocale))
-            var example = new Date(2030, 8, 25, 14, 35, 42)
-            return formats.map(function(format) {
-              var preview = locale.toString(example, format.replace(/ww/g, Model.isoWeekLiteral(2030, 8, 25)))
-              return {value:format, label:preview.replace(/\n/g, " · ")}
-            })
-          }
-          readonly property bool customMode: customSelected || !presetOptions.some(function(o) { return o.value === fieldRow.current })
-          width: group.width
-          spacing: Style.space(5)
-          visible: group.modelData.title === "Bar formats" ? root.formatsOpen
-            : modelData === "agendaRefreshMinutes" || modelData === "showEventLocations" ? Preferences.value(root.settings, "agendaEnabled")
-            : true
-          enabled: !root.saving
-          opacity: enabled ? 1 : 0.55
-          Toggle {
-            visible: fieldRow.spec.type === "boolean"
-            width: parent.width
-            implicitHeight: Style.space(36)
-            color: "transparent"
-            borderSpec: activeFocus ? Border.flat(Color.accent, 1) : Border.none()
-            radius: Style.cornerRadius * 2
-            fontFamily: "sans-serif"
-            titleSize: Style.space(13)
-            label: root.tr(fieldRow.spec.label)
-            checked: fieldRow.current === true
-            onClicked: root.save(fieldRow.modelData, !checked)
-          }
-          ClockDropdown {
-            visible: fieldRow.spec.type === "enum"
-            width: parent.width
-            fontFamily: "sans-serif"
-            label: root.tr(fieldRow.spec.label)
-            value: String(fieldRow.current)
-            options: (fieldRow.spec.options || []).map(function(v) {
-              return {value:v,label:(v === "system" || v === "locale") ? root.tr("System") : v === "nb" ? "Norsk bokmål" : v === "en" ? "English" : root.language === "en" ? v.charAt(0).toUpperCase() + v.slice(1) : root.tr(v)}
-            })
-            onChanged: function(value) { root.save(fieldRow.modelData, value) }
-          }
-          ClockDropdown {
-            visible: fieldRow.hasPresets
-            spaceClockIcon: fieldRow.modelData === "format" || fieldRow.modelData === "formatAlt"
-            width: parent.width
-            fontFamily: "sans-serif"
-            label: root.tr(fieldRow.spec.label)
-            value: fieldRow.customMode ? "__custom" : String(fieldRow.current)
-            options: fieldRow.presetOptions.concat([{value:"__custom", label:root.tr("Custom")}])
-            onChanged: function(value) {
-              fieldRow.customSelected = value === "__custom"
-              if (fieldRow.customSelected) {
-                Qt.callLater(function() { textField.forceActiveFocus(); textField.selectAll() })
-              } else if (value !== fieldRow.current) {
-                root.save(fieldRow.modelData, value)
-              }
-            }
-          }
-          RowLayout {
-            visible: fieldRow.spec.type === "integer"
-            width: parent.width
-            spacing: Style.space(12)
-            Label { text: root.tr(fieldRow.spec.label); Layout.fillWidth: true }
-            Controls.TextField {
-              id: numberField
-              Layout.preferredWidth: Style.space(78)
-              implicitHeight: Style.space(34)
-              text: String(fieldRow.current)
-              placeholderTextColor: root.secondaryForeground
-              selectByMouse: true
-              color: Color.popups.text
-              font.family: "sans-serif"
-              font.pixelSize: Style.space(12)
-              padding: Style.space(7)
-              Accessible.name: root.tr(fieldRow.spec.label)
-              background: Rectangle { radius: Style.cornerRadius * 2; color: Qt.alpha(Color.popups.text, 0.055); border.width: numberField.activeFocus ? 1 : 0; border.color: Color.accent }
-              onTextEdited: root.clearError()
-              onEditingFinished: {
-                if (!visible) return
-                var next = Preferences.parseValue(fieldRow.modelData, text)
-                if (next !== fieldRow.current) root.save(fieldRow.modelData, next)
-              }
-              Keys.onEscapePressed: { text = String(fieldRow.current); root.back() }
-              HoverHandler { id: numberHover }
-              PanelToolTip {
-                visible: numberHover.hovered || numberField.activeFocus
-                text: fieldRow.spec.min + "–" + fieldRow.spec.max
-                fontFamily: "sans-serif"
-              }
-            }
-          }
-          Label { visible: fieldRow.spec.type === "string" && !fieldRow.hasPresets; text: root.tr(fieldRow.spec.label); color: root.secondaryForeground; font.pixelSize: Style.space(12) }
-          Controls.TextField {
-            id: textField
-            visible: fieldRow.spec.type === "string" && (!fieldRow.hasPresets || fieldRow.customMode)
-            width: parent.width
-            implicitHeight: Style.space(34)
-            text: Preferences.displayValue(fieldRow.modelData, fieldRow.current)
-            placeholderText: fieldRow.modelData === "locale" ? root.tr("System locale") : ""
-            placeholderTextColor: root.secondaryForeground
-            selectByMouse: true
-            color: Color.popups.text
-            font.family: "sans-serif"
-            font.pixelSize: Style.space(12)
-            padding: Style.space(8)
-            Accessible.name: root.tr(fieldRow.spec.label)
-            background: Rectangle { radius: Style.cornerRadius * 2; color: "transparent"; border.width: 1; border.color: textField.activeFocus ? Color.accent : Qt.alpha(Color.popups.text, 0.22) }
-            onTextEdited: root.clearError()
-            onEditingFinished: {
-              if (!visible) return
-              var next = Preferences.parseValue(fieldRow.modelData, text)
-              if (next !== fieldRow.current) root.save(fieldRow.modelData, next)
-            }
-            Keys.onEscapePressed: { text = Preferences.displayValue(fieldRow.modelData, fieldRow.current); root.back() }
-            HoverHandler { id: textHover }
-            PanelToolTip {
-              visible: fieldRow.modelData.indexOf("vertical") === 0 && (textHover.hovered || textField.activeFocus)
-              text: root.tr("Use \\n for a line break")
-              fontFamily: "sans-serif"
-            }
-          }
+    }
+    SafeTextField {
+      id: editor
+      visible: field.customMode
+      width: parent.width
+      text: Schema.displayValue(field.key, field.value)
+      placeholderText: field.placeholder
+      translate: FoamyI18n.t
+      onEditingFinished: {
+        if (!visible) return
+        var next = Schema.parseValue(field.key, text)
+        if (next !== field.value) root.save(field.key, next)
+      }
+    }
+    Text {
+      visible: field.customMode && field.hint !== ""
+      width: parent.width
+      text: field.hint
+      textFormat: Text.PlainText
+      horizontalAlignment: Text.AlignLeft
+      wrapMode: Text.WordWrap
+      color: FoamyPalette.mutedText
+      font.family: FoamyStyle.fontFamily
+      font.pixelSize: FoamyStyle.font.caption
+    }
+  }
+
+  Component { id: glyphLabel; ClockFormatLabel {} }
+
+  FoamySettingsSection {
+    width: parent.width
+    title: FoamyI18n.t("Display")
+    enabled: !root.saving
+
+    PresetField {
+      key: "locale"
+      presets: [
+        {value: "", label: root.followLabel},
+        {value: "nb_NO", label: "Norsk bokmål"},
+        {value: "nn_NO", label: "Norsk nynorsk"},
+        {value: "en_GB", label: "English (UK)"},
+        {value: "en_US", label: "English (US)"}
+      ]
+      placeholder: FoamyI18n.t("Locale code, e.g. de_DE")
+    }
+    FoamyDropdown {
+      width: parent.width
+      label: root.label("weekStartDay")
+      value: String(root.current("weekStartDay"))
+      // Options are locale, monday … sunday; index % 7 is Locale.Monday … Locale.Sunday (0).
+      options: Schema.field("weekStartDay").options.map(function(day, index) {
+        if (day === "locale") return {value: day, label: FoamyI18n.t("Date locale default")}
+        return {value: day, label: root.dateLocale.standaloneDayName(index % 7, Locale.LongFormat)}
+      })
+      onChanged: function(next) { root.save("weekStartDay", next) }
+    }
+    FoamyDropdown {
+      width: parent.width
+      label: root.label("timeFormat")
+      value: String(root.current("timeFormat"))
+      options: [{value: "24-hour", label: FoamyI18n.t("24-hour")}, {value: "12-hour", label: FoamyI18n.t("12-hour")}]
+      onChanged: function(next) { root.save("timeFormat", next) }
+    }
+    FoamyToggle {
+      width: parent.width
+      label: root.label("showSeconds")
+      description: FoamyI18n.t("The bar shows seconds when its format has them")
+      checked: root.current("showSeconds") === true
+      onClicked: root.save("showSeconds", !checked)
+    }
+    FoamyToggle {
+      width: parent.width
+      label: root.label("showTimeZone")
+      checked: root.current("showTimeZone") === true
+      onClicked: root.save("showTimeZone", !checked)
+    }
+  }
+
+  FoamySettingsSection {
+    width: parent.width
+    enabled: !root.saving
+
+    FoamyAction {
+      iconName: root.formatsOpen ? "chevron-down" : "chevron-right"
+      label: FoamyI18n.t("Bar formats")
+      foreground: FoamyPalette.secondaryText
+      focusable: true
+      onClicked: root.formatsOpen = !root.formatsOpen
+    }
+    Repeater {
+      model: root.formatsOpen ? ["format", "formatAlt", "verticalFormat", "verticalFormatAlt"] : []
+      PresetField {
+        required property string modelData
+        key: modelData
+        presets: root.formatOptions(modelData)
+        glyphLabels: modelData === "format" || modelData === "formatAlt"
+        hint: modelData.indexOf("vertical") === 0 ? FoamyI18n.t("Use \\n for a line break") : ""
+      }
+    }
+  }
+
+  FoamySettingsSection {
+    width: parent.width
+    title: FoamyI18n.t("Agenda")
+    enabled: !root.saving
+
+    FoamyToggle {
+      width: parent.width
+      label: root.label("agendaEnabled")
+      checked: root.current("agendaEnabled") === true
+      onClicked: root.save("agendaEnabled", !checked)
+    }
+    FoamyDropdown {
+      visible: root.current("agendaEnabled") === true
+      width: parent.width
+      label: root.label("agendaRefreshMinutes")
+      value: String(root.current("agendaRefreshMinutes"))
+      options: Schema.refreshOptions(root.current("agendaRefreshMinutes")).map(function(minutes) {
+        return {value: String(minutes), label: minutes % 60 === 0
+          ? FoamyI18n.tn("%1 hours", minutes / 60) : FoamyI18n.tn("%1 minutes", minutes)}
+      })
+      onChanged: function(next) { root.save("agendaRefreshMinutes", Number(next)) }
+    }
+    Column {
+      width: parent.width
+      spacing: FoamyStyle.gapSmall
+      Text {
+        width: parent.width
+        text: root.label("calendarApp")
+        textFormat: Text.PlainText
+        horizontalAlignment: Text.AlignLeft
+        color: FoamyPalette.secondaryText
+        font.family: FoamyStyle.fontFamily
+        font.pixelSize: FoamyStyle.font.bodySmall
+        font.bold: true
+      }
+      SafeTextField {
+        width: parent.width
+        text: String(root.current("calendarApp"))
+        placeholderText: "gnome-calendar"
+        translate: FoamyI18n.t
+        onEditingFinished: {
+          var next = text.trim()
+          if (next !== root.current("calendarApp")) root.save("calendarApp", next)
         }
       }
+    }
+    FoamyToggle {
+      visible: root.current("agendaEnabled") === true
+      width: parent.width
+      label: root.label("showEventLocations")
+      checked: root.current("showEventLocations") === true
+      onClicked: root.save("showEventLocations", !checked)
     }
   }
 }
