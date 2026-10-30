@@ -3,5 +3,4 @@ BarWidget 1.0 BarWidget.qml
 ClockFormatLabel 1.0 ClockFormatLabel.qml
 ClockPanel 1.0 ClockPanel.qml
 ClockView 1.0 ClockView.qml
-SettingsDropdown 1.0 SettingsDropdown.qml
 SettingsPane 1.0 SettingsPane.qml

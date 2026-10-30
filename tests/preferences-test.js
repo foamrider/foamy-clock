@@ -1,7 +1,7 @@
 const I18n = require('./i18n.cjs');
 const assert = require('node:assert/strict')
 const P = require('../Preferences.js')
-const F = require('./prefs.cjs')
+const F = require('../kit/node-loader.cjs').load('FoamyPrefs')
 const M = require('../Model.js')
 const manifest = require('../manifest.json')
 const strip = f => Object.fromEntries(Object.entries(f).filter(([k]) => k !== 'pattern' && k !== 'maxLength'))

@@ -1,10 +1,8 @@
 import QtQuick
 import Quickshell
-import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "kit"
-import "kit/FoamyPrefs.js" as Prefs
 import "Model.js" as Model
 import "Preferences.js" as Schema
 
@@ -23,42 +21,29 @@ BarWidget {
 
   property date displayDate: clock.date
 
-  function preference(key) { return Prefs.value(Schema.fields, root.settings, key) }
+  // Saved values read at once, even before the host reflects them back.
+  function preference(key) { return prefs.value(key) }
+  readonly property var effectiveSettings: prefs.effectiveSettings
   function tr(text) { return FoamyI18n.t(text) }
   readonly property string localeName: Schema.localeName(preference("locale"), FoamyI18n.formatLocale)
   readonly property var displayLocale: Qt.locale(localeName)
   readonly property string configuredFormat: preference(vertical ? "verticalFormat" : "format")
   readonly property string configuredAltFormat: preference(vertical ? "verticalFormatAlt" : "formatAlt")
-  property string settingsError: ""
-  property var lastSave: null
-  property var pendingCommands: []
-  readonly property bool saving: preferencesSave.running || pendingCommands.length > 0
+  readonly property string settingsError: prefs.error !== "" ? tr(prefs.error) : ""
+  readonly property bool saving: prefs.busy
+  readonly property bool canRetry: prefs.canRetry
 
-  // Inline when the host allows it (instant, no process); else one
-  // `omarchy bar set` per key, queued so quick changes are never dropped.
-  function save(key, value) {
-    var result = Prefs.save(root.bar, root.moduleName, Schema.fields, root.settings, key, value)
-    lastSave = { key: key, value: value }
-    if (!result.ok) { settingsError = tr(result.error); return }
-    settingsError = ""
-    if (result.command.length === 0) return
-    pendingCommands = pendingCommands.concat([result.command])
-    flushPreferences()
+  // Inline when the host allows it (instant, no process), else one
+  // `omarchy bar set` at a time; the newest value per key wins.
+  FoamyPrefsQueue {
+    id: prefs
+    bar: root.bar
+    moduleName: root.moduleName
+    fields: Schema.fields
+    settings: root.settings
   }
-  function retrySave() { if (lastSave) save(lastSave.key, lastSave.value) }
-  function flushPreferences() {
-    if (preferencesSave.running || pendingCommands.length === 0) return
-    preferencesSave.command = pendingCommands[0]
-    pendingCommands = pendingCommands.slice(1)
-    preferencesSave.running = true
-  }
-  Process {
-    id: preferencesSave
-    onExited: function(exitCode) {
-      if (exitCode !== 0) root.settingsError = root.tr("Couldn't save the setting.")
-      Qt.callLater(root.flushPreferences)
-    }
-  }
+  function save(key, value) { prefs.save(key, value) }
+  function retrySave() { prefs.retry() }
 
   readonly property var formatRing: Model.clockFormatRing(configuredFormat, configuredAltFormat, Model.clockFormats(vertical))
 
@@ -67,8 +52,8 @@ BarWidget {
   readonly property string activeFormat: configuredFormat
   // Tick every second only when the chosen format displays seconds.
   readonly property bool showsSeconds: Model.clockNeedsSeconds(activeFormat)
-  readonly property string calendarIcon: "󰸗"
-  readonly property string clockIcon: ""
+  readonly property string calendarIcon: "\u{f0e17}"
+  readonly property string clockIcon: "\u{f017}"
   readonly property string formattedText: formatted(displayDate)
   readonly property var horizontalParts: formattedText.split(clockIcon)
   readonly property string dateText: horizontalParts.length > 1 ? String(horizontalParts[0]).trim() : formattedText
@@ -144,7 +129,7 @@ BarWidget {
     id: panel
     visible: false
     bar: root.bar
-    settings: root.settings
+    settings: root.effectiveSettings
     anchorItem: button
     hostWidget: root
   }

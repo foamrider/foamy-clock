@@ -18,7 +18,7 @@ var fields = [
     "key": "format",
     "type": "string",
     "label": "Bar format",
-    "defaultValue": "ddd d MMM '' HH:mm",
+    "defaultValue": "ddd d MMM '\u{f017}' HH:mm",
     "maxLength": 200,
     "pattern": "^(?=[\\s\\S]*\\S)[^\\x00-\\x09\\x0b-\\x1f\\x7f]+$"
   },

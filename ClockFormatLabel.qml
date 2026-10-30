@@ -11,7 +11,7 @@ Item {
   property string text: ""
   property color color: FoamyPalette.text
 
-  readonly property string glyph: ""
+  readonly property string glyph: "\u{f017}"
   readonly property var parts: text.split(glyph)
   readonly property string timeText: parts.length > 1 ? parts.slice(1).join(glyph).trim() : ""
   readonly property bool splitClock: timeText !== ""

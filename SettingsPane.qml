@@ -46,11 +46,11 @@ FoamySettingsPage {
     width: parent ? parent.width : 0
     spacing: FoamyStyle.gapSmall
 
-    SettingsDropdown {
+    FoamyDropdown {
       width: parent.width
       label: root.label(field.key)
       labelDelegate: field.glyphLabels ? glyphLabel : null
-      current: field.customMode ? "__custom" : String(field.value)
+      value: field.customMode ? "__custom" : String(field.value)
       options: field.presets.concat([{value: "__custom", label: FoamyI18n.t("Custom")}])
       onChanged: function(next) {
         field.customSelected = next === "__custom"
@@ -102,10 +102,10 @@ FoamySettingsPage {
       ]
       placeholder: FoamyI18n.t("Locale code, e.g. de_DE")
     }
-    SettingsDropdown {
+    FoamyDropdown {
       width: parent.width
       label: root.label("weekStartDay")
-      current: String(root.current("weekStartDay"))
+      value: String(root.current("weekStartDay"))
       // Options are locale, monday … sunday; index % 7 is Locale.Monday … Locale.Sunday (0).
       options: Schema.field("weekStartDay").options.map(function(day, index) {
         if (day === "locale") return {value: day, label: FoamyI18n.t("Date locale default")}
@@ -113,10 +113,10 @@ FoamySettingsPage {
       })
       onChanged: function(next) { root.save("weekStartDay", next) }
     }
-    SettingsDropdown {
+    FoamyDropdown {
       width: parent.width
       label: root.label("timeFormat")
-      current: String(root.current("timeFormat"))
+      value: String(root.current("timeFormat"))
       options: [{value: "24-hour", label: FoamyI18n.t("24-hour")}, {value: "12-hour", label: FoamyI18n.t("12-hour")}]
       onChanged: function(next) { root.save("timeFormat", next) }
     }
@@ -169,11 +169,11 @@ FoamySettingsPage {
       checked: root.current("agendaEnabled") === true
       onClicked: root.save("agendaEnabled", !checked)
     }
-    SettingsDropdown {
+    FoamyDropdown {
       visible: root.current("agendaEnabled") === true
       width: parent.width
       label: root.label("agendaRefreshMinutes")
-      current: String(root.current("agendaRefreshMinutes"))
+      value: String(root.current("agendaRefreshMinutes"))
       options: Schema.refreshOptions(root.current("agendaRefreshMinutes")).map(function(minutes) {
         return {value: String(minutes), label: minutes % 60 === 0
           ? FoamyI18n.tn("%1 hours", minutes / 60) : FoamyI18n.tn("%1 minutes", minutes)}

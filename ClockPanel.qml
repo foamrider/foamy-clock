@@ -20,7 +20,9 @@ Panel {
   manageIpc: false
 
   property var anchorItem: null
-  property bool editingSettings: false
+  // Settings page state: show() opens the popup if needed; resets on close only.
+  FoamySettingsState { id: settingsState; panel: root }
+  readonly property alias editingSettings: settingsState.editing
   property string launchError: ""
   readonly property alias popup: popup
 
@@ -35,15 +37,14 @@ Panel {
   function preference(key) { return Prefs.value(Schema.fields, root.settings, key) }
 
   function openSettings() {
-    root.open()
-    root.editingSettings = true
+    settingsState.show()
     Qt.callLater(function() { if (popup.bodyItem) popup.bodyItem.settingsOpened() })
   }
   function closeSettings() {
-    root.editingSettings = false
+    settingsState.hide()
     Qt.callLater(function() { if (popup.bodyItem) popup.bodyItem.forceActiveFocus() })
   }
-  onOpenedChanged: if (!opened) { editingSettings = false; launchError = "" }
+  onOpenedChanged: if (!opened) launchError = ""
 
   function open() {
     ClockService.refresh()
@@ -112,7 +113,7 @@ Panel {
     // The calendar is the one foamy popup taller than popupMaxHeight: it
     // compacts itself by screen height instead (ClockView.compactHeight), so
     // it may use the whole card height the host allows.
-    contentHeight: popup.fittedContentHeight(popup.bodyImplicitHeight)
+    maxHeight: 0
     focusTarget: bodyItem ? (root.editingSettings ? bodyItem.settingsBackTarget : bodyItem) : null
     body: Component {
       ClockView {
@@ -123,7 +124,7 @@ Panel {
         editingSettings: root.editingSettings
         saving: root.hostWidget ? root.hostWidget.saving : false
         settingsError: root.hostWidget ? root.hostWidget.settingsError : ""
-        retryable: root.hostWidget ? root.hostWidget.lastSave !== null : false
+        retryable: root.hostWidget ? root.hostWidget.canRetry : false
         launchError: root.launchError
         onCloseRequestedByView: root.editingSettings ? root.closeSettings() : root.close()
         onSettingsRequested: root.openSettings()

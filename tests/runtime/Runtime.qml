@@ -4,6 +4,7 @@ import qs.Commons
 import qs.Ui
 import "harness"
 import "plugin" as Clock
+import "plugin/kit" as Kit
 
 // Runtime checks of the real clock widget on a host shell (offscreen):
 // three bar instances (three monitors) share one ClockService; nothing
@@ -37,7 +38,7 @@ ShellRoot {
 
   // Review round 1: a selection must not cut the dropdown's binding.
   property string boundSetting: "a"
-  Clock.SettingsDropdown { id: bound; current: shell.boundSetting; options: ["a", "b", "c"] }
+  Kit.FoamyDropdown { id: bound; value: shell.boundSetting; options: ["a", "b", "c"] }
 
   function widget(i) { return bars.itemAt(i).widget }
   function panel(i) { return widget(i).children.filter(c => c.popup !== undefined)[0] }
@@ -53,6 +54,9 @@ ShellRoot {
       eq(service.refreshMinutes, 45, "the leader feeds settings into the shared service")
       for (var i = 0; i < 3; i++) eq(panel(i).popup.bodyItem, null, "no popup body before open on bar " + i)
       eq(widget(0).displayDate instanceof Date, true, "bar label has a date")
+      // Escaped icon-font glyphs (pua-literal) still resolve to the same code points.
+      eq(widget(0).clockIcon.codePointAt(0), 0xf017, "clock glyph code point")
+      eq(widget(0).calendarIcon.codePointAt(0), 0xf0e17, "calendar glyph code point")
       widget(1).open()
       openCheck.start()
     }
@@ -88,7 +92,7 @@ ShellRoot {
       eq(Number(view.cursorKey.slice(8)), 2, "then moves within the shown month")
       service.goToToday()
       // Dropdown keeps following the setting after a selection (kit sets value on select).
-      bound.value = "b"; bound.changed("b")
+      bound.select("b")
       shell.boundSetting = "c"
       eq(bound.value, "c", "dropdown follows the stored setting after a selection")
       if (lang === "no" && host === "4.5") {
@@ -110,6 +114,7 @@ ShellRoot {
       // Settings save inline through the mock bar (FoamyPrefs).
       widget(0).save("showSeconds", false)
       eq(bars.itemAt(0).mockBar.saved.length, 1, "inline save recorded")
+      eq(widget(0).preference("showSeconds"), false, "a saved value reads back at once (FoamyPrefsQueue)")
       widget(0).save("calendarApp", "a;b")
       check(widget(0).settingsError !== "", "invalid value reports an error")
       console.log("FOAMY RESULT " + host + "/" + lang + " checks=" + checks + " failures=" + failures)

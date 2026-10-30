@@ -275,11 +275,13 @@ PanelKeyCatcher {
             // Times read left to right in every language.
             LayoutMirroring.enabled: false
 
-            // The clock face is display art, larger than the type scale.
+            // The clock face: the kit's hero numeral (56), compact (40) on
+            // short screens, and a local 32 on very short screens where the
+            // agenda would otherwise lose its rows.
             ClockLabel {
               id: heroClock
               text: root.heroTimeText()
-              font.pixelSize: Style.space(root.veryShortHeight ? 32 : root.compactHeight ? 40 : 56)
+              font.pixelSize: root.veryShortHeight ? Style.space(32) : root.compactHeight ? FoamyStyle.font.numeralCompact : FoamyStyle.font.numeral
               font.features: ({ "tnum": 1 })
             }
             ClockLabel {
@@ -389,20 +391,12 @@ PanelKeyCatcher {
               anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
               spacing: FoamyStyle.gapSmall
-              // No chevron-left in the kit set yet: the right chevron turned
-              // around (FoamyIcon mirrors both in right-to-left languages).
               FoamyAction {
-                iconName: ""
+                iconName: "chevron-left"
+                foreground: FoamyPalette.secondaryText
                 tooltipText: FoamyI18n.t("Previous month")
                 onClicked: service.moveMonth(-1)
                 onHoveredChanged: if (hovered) root.cursorKey = ""
-                FoamyIcon {
-                  anchors.centerIn: parent
-                  width: FoamyStyle.iconSize; height: width
-                  name: "chevron-right"
-                  rotation: 180
-                  color: FoamyPalette.secondaryText
-                }
               }
               FoamyAction {
                 iconName: "chevron-right"
@@ -709,7 +703,7 @@ PanelKeyCatcher {
             FoamyAction {
               id: openCalendarButton
               anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
-              iconName: ""
+              iconName: "calendar"
               label: FoamyI18n.t("Calendar")
               foreground: FoamyPalette.secondaryText
               tooltipText: FoamyI18n.t("Open calendar")
