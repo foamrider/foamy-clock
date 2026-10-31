@@ -220,24 +220,25 @@ PanelKeyCatcher {
       id: calendarColumn
       width: parent.width
 
-      // The foamy hero band: the date and week in the title row, the clock
-      // face in the hero slot. Clicking the face goes back to today.
+      // The foamy hero band, centred: the clock face first, the date and
+      // week under it; Settings stays in the trailing top corner. Clicking
+      // the face goes back to today.
       FoamyHeroBand {
         id: hero
         width: parent.width
-        iconName: "calendar"
+        centered: true
         title: root.heroDateText
         meta: root.heroMetaText
         onSettingsClicked: root.settingsRequested()
         onSettingsHovered: function(hovered) { if (hovered) root.cursorKey = "" }
 
         Item {
-          Layout.fillWidth: true
+          Layout.alignment: Qt.AlignHCenter
+          implicitWidth: faceRow.implicitWidth
           implicitHeight: faceRow.implicitHeight
 
           Row {
             id: faceRow
-            anchors.left: parent.left
             spacing: Style.space(5)
             height: heroClock.implicitHeight
             // Times read left to right in every language.
