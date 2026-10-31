@@ -41,6 +41,8 @@ FoamySettingsPage {
     property string placeholder: ""
     property string hint: ""
     property bool customSelected: false
+    // Short presets (locales) are a row; format previews stay full width.
+    property bool compact: false
     readonly property var value: root.current(key)
     readonly property bool customMode: customSelected || !presets.some(function(o) { return o.value === field.value })
     width: parent ? parent.width : 0
@@ -48,6 +50,7 @@ FoamySettingsPage {
 
     FoamyDropdown {
       width: parent.width
+      compact: field.compact
       label: root.label(field.key)
       labelDelegate: field.glyphLabels ? glyphLabel : null
       value: field.customMode ? "__custom" : String(field.value)
@@ -93,6 +96,7 @@ FoamySettingsPage {
 
     PresetField {
       key: "locale"
+      compact: true
       presets: [
         {value: "", label: root.followLabel},
         {value: "nb_NO", label: "Norsk bokmål"},
@@ -104,6 +108,7 @@ FoamySettingsPage {
     }
     FoamyDropdown {
       width: parent.width
+      compact: true
       label: root.label("weekStartDay")
       value: String(root.current("weekStartDay"))
       // Options are locale, monday … sunday; index % 7 is Locale.Monday … Locale.Sunday (0).
@@ -115,6 +120,7 @@ FoamySettingsPage {
     }
     FoamyDropdown {
       width: parent.width
+      compact: true
       label: root.label("timeFormat")
       value: String(root.current("timeFormat"))
       options: [{value: "24-hour", label: FoamyI18n.t("24-hour")}, {value: "12-hour", label: FoamyI18n.t("12-hour")}]
@@ -176,6 +182,7 @@ FoamySettingsPage {
     FoamyDropdown {
       visible: root.current("agendaEnabled") === true
       width: parent.width
+      compact: true
       label: root.label("agendaRefreshMinutes")
       value: String(root.current("agendaRefreshMinutes"))
       options: Schema.refreshOptions(root.current("agendaRefreshMinutes")).map(function(minutes) {
