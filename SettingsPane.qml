@@ -135,7 +135,11 @@ FoamySettingsPage {
     }
   }
 
+  // Opening the bar formats scrolls them into view.
+  onFormatsOpenChanged: if (formatsOpen) root.ensureVisible(formatsSection)
+
   FoamySettingsSection {
+    id: formatsSection
     width: parent.width
     enabled: !root.saving
 

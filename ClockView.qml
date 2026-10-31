@@ -188,7 +188,7 @@ PanelKeyCatcher {
   }
 
   implicitWidth: FoamyStyle.popupWidth
-  implicitHeight: editingSettings ? Math.min(settingsPage.implicitHeight, FoamyStyle.popupMaxHeight) : calendarColumn.implicitHeight
+  implicitHeight: editingSettings ? settingsPage.implicitHeight : calendarColumn.implicitHeight
   blocked: editingSettings
 
   onMoveRequested: function(dx, dy) { root.moveCursor(dx !== 0 ? dx : dy * 7) }
@@ -219,6 +219,8 @@ PanelKeyCatcher {
     target: ClockService
     function onAgendaReset() { agendaScroll.contentY = 0 }
   }
+  // A wheel notch scrolls the agenda a normal amount (high-resolution wheels too).
+  FoamyWheelScroll { target: agendaScroll }
 
   component ClockLabel: Text {
     textFormat: Text.PlainText
