@@ -82,7 +82,23 @@ PanelKeyCatcher {
   readonly property bool veryShortHeight: availableHeight > 0 && availableHeight < Style.space(600)
   readonly property int cellHeight: Style.space(veryShortHeight ? 24 : compactHeight ? 28 : 38)
   readonly property int cellSpacing: FoamyStyle.gapTiny
-  readonly property int weekColumnWidth: Style.space(32)
+  // The week column keeps its labels clear of its rounded edge: the widest
+  // of "Week" and a two-digit week number, plus inner padding on both sides.
+  readonly property int weekColumnPadding: FoamyStyle.gap
+  readonly property int weekColumnWidth: Math.max(Style.space(32),
+    Math.ceil(Math.max(weekLabelMetrics.advanceWidth, weekNumberMetrics.advanceWidth)) + weekColumnPadding * 2)
+  TextMetrics {
+    id: weekLabelMetrics
+    font.family: FoamyStyle.fontFamily
+    font.pixelSize: FoamyStyle.font.bodySmall
+    text: FoamyI18n.t("Week")
+  }
+  TextMetrics {
+    id: weekNumberMetrics
+    font.family: FoamyStyle.fontFamily
+    font.pixelSize: FoamyStyle.font.bodySmall
+    text: FoamyI18n.number(52)
+  }
   readonly property int gutterWidth: Style.space(5)
 
   // ---- The day cursor (keyboard and pointer), separate from the selection.
@@ -372,6 +388,8 @@ PanelKeyCatcher {
                   color: weekStartMouse.containsMouse ? FoamyPalette.hoverFill : "transparent"
                   ClockLabel {
                     anchors.centerIn: parent
+                    width: Math.min(implicitWidth, parent.width - root.weekColumnPadding * 2)
+                    elide: Text.ElideRight
                     text: FoamyI18n.t("Week")
                     color: FoamyPalette.mutedText
                     font.pixelSize: FoamyStyle.font.bodySmall
@@ -411,6 +429,7 @@ PanelKeyCatcher {
                   required property var modelData
                   ClockLabel {
                     width: root.weekColumnWidth; height: root.cellHeight
+                    leftPadding: root.weekColumnPadding; rightPadding: root.weekColumnPadding
                     horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                     text: FoamyI18n.number(modelData.week)
                     color: FoamyPalette.mutedText
@@ -431,27 +450,13 @@ PanelKeyCatcher {
                         width: root.cellWidth; height: root.cellHeight
                         radius: FoamyStyle.radius
                         color: selected ? FoamyPalette.selectedFill : hasCursor ? FoamyPalette.hoverFill : "transparent"
-                        border.width: modelData.today ? Style.spacing.hairline : 0
+                        // Today and the selected day: the same accent hairline on
+                        // every side (no heavier bottom edge).
+                        border.width: modelData.today || selected ? Style.spacing.hairline : 0
                         border.color: Commons.Color.accent
                         Accessible.role: Accessible.Button
                         Accessible.name: root.displayLocale.toString(new Date(modelData.year, modelData.month, modelData.day), Locale.LongFormat)
 
-                        Item {
-                          anchors.bottom: parent.bottom
-                          width: parent.width; height: Math.max(Style.space(2), Math.min(dayCell.radius, dayCell.width / 2, dayCell.height / 2))
-                          visible: dayCell.selected
-                          clip: true
-                          // The inset highlight tapers around the bottom corners.
-                          Rectangle {
-                            anchors.bottom: parent.bottom
-                            width: dayCell.width; height: dayCell.height
-                            radius: dayCell.radius; color: Commons.Color.accent; antialiasing: true
-                            Rectangle {
-                              anchors.fill: parent; anchors.bottomMargin: Style.space(2)
-                              radius: dayCell.radius; color: dayCell.color; antialiasing: true
-                            }
-                          }
-                        }
                         ClockLabel {
                           anchors.centerIn: parent
                           anchors.verticalCenterOffset: -Style.space(2)
