@@ -632,61 +632,32 @@ PanelKeyCatcher {
           }
         }
 
-        Column {
+        FoamyPanelFooter {
           id: footerBlock
           width: parent.width
           spacing: body.spacing
-          Rectangle { width: parent.width; height: 1; color: FoamyPalette.divider }
-          Item {
-            width: parent.width; height: FoamyStyle.actionSize
-            FoamyAction {
-              id: openCalendarButton
-              anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
-              iconName: "calendar"
-              label: FoamyI18n.t("Calendar")
-              foreground: FoamyPalette.secondaryText
-              tooltipText: FoamyI18n.t("Open calendar")
-              onClicked: root.calendarRequested()
-              onHoveredChanged: if (hovered) root.cursorKey = ""
-            }
-            ClockLabel {
-              id: updateStatus
-              anchors.left: openCalendarButton.right; anchors.leftMargin: FoamyStyle.gapLarge
-              anchors.right: refreshButton.left; anchors.rightMargin: Style.space(7)
-              anchors.verticalCenter: parent.verticalCenter
-              horizontalAlignment: Text.AlignRight; elide: Text.ElideRight
-              text: root.launchError || (service.agendaEnabled ? root.updatedAgoText() : "")
-              color: root.launchError ? Commons.Color.urgent : FoamyPalette.secondaryText
-              font.pixelSize: FoamyStyle.font.bodySmall
-              MouseArea {
-                id: updateStatusMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: service.agendaState === "partial" ? Qt.PointingHandCursor : Qt.ArrowCursor
-                onClicked: if (cursorShape === Qt.PointingHandCursor) root.calendarRequested()
-              }
-              PanelToolTip {
-                visible: updateStatusMouse.containsMouse && updateStatus.text !== ""
-                text: service.agendaState === "partial"
-                  ? FoamyI18n.t("Some events may be missing. Open calendar for the full view.")
-                  : updateStatus.text
-                fontFamily: FoamyStyle.fontFamily
-              }
-            }
-            FoamyAction {
-              id: refreshButton
-              visible: service.agendaEnabled
-              anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-              iconName: "refresh-cw"
-              foreground: FoamyPalette.secondaryText
-              tooltipText: service.agendaLoading ? FoamyI18n.t("Refreshing calendars") : FoamyI18n.t("Refresh calendars")
-              actionEnabled: !service.agendaLoading
-              spinning: root.opened && !root.editingSettings && service.agendaLoading
-              onClicked: service.refreshAgenda(true)
-              onHoveredChanged: if (hovered) root.cursorKey = ""
-            }
+          status: root.launchError || (service.agendaEnabled ? root.updatedAgoText() : "")
+          statusError: root.launchError !== ""
+          statusClickable: service.agendaState === "partial"
+          statusTooltip: service.agendaState === "partial"
+            ? FoamyI18n.t("Some events may be missing. Open calendar for the full view.") : ""
+          showRefresh: service.agendaEnabled
+          refreshing: root.opened && !root.editingSettings && service.agendaLoading
+          refreshEnabled: !service.agendaLoading
+          refreshTooltip: service.agendaLoading ? FoamyI18n.t("Refreshing calendars") : FoamyI18n.t("Refresh calendars")
+          onStatusClicked: root.calendarRequested()
+          onRefreshClicked: service.refreshAgenda(true)
+          onRefreshHovered: function(hovered) { if (hovered) root.cursorKey = "" }
+
+          FoamyAction {
+            id: openCalendarButton
+            iconName: "calendar"
+            label: FoamyI18n.t("Calendar")
+            foreground: FoamyPalette.secondaryText
+            tooltipText: FoamyI18n.t("Open calendar")
+            onClicked: root.calendarRequested()
+            onHoveredChanged: if (hovered) root.cursorKey = ""
           }
-          Item { width: 1; height: FoamyStyle.gapSmall }
         }
       }
     }
