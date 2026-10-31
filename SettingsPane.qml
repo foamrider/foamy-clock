@@ -191,29 +191,12 @@ FoamySettingsPage {
       })
       onChanged: function(next) { root.save("agendaRefreshMinutes", Number(next)) }
     }
-    Column {
+    FoamyTextSettingField {
       width: parent.width
-      spacing: FoamyStyle.gapSmall
-      Text {
-        width: parent.width
-        text: root.label("calendarApp")
-        textFormat: Text.PlainText
-        horizontalAlignment: Text.AlignLeft
-        color: FoamyPalette.secondaryText
-        font.family: FoamyStyle.fontFamily
-        font.pixelSize: FoamyStyle.font.bodySmall
-        font.bold: true
-      }
-      SafeTextField {
-        width: parent.width
-        text: String(root.current("calendarApp"))
-        placeholderText: "gnome-calendar"
-        translate: FoamyI18n.t
-        onEditingFinished: {
-          var next = text.trim()
-          if (next !== root.current("calendarApp")) root.save("calendarApp", next)
-        }
-      }
+      label: root.label("calendarApp")
+      value: String(root.current("calendarApp"))
+      placeholderText: "gnome-calendar"
+      onCommitted: function(next) { root.save("calendarApp", next) }
     }
     FoamyToggle {
       visible: root.current("agendaEnabled") === true
