@@ -128,6 +128,8 @@ long date format without the year.
 
 ## Development
 
+`kit/` holds shared components copied from [foamy-kit](https://github.com/foamrider/foamy-kit); edit them there, not here.
+
 Shared UI parts come from [foamy-kit](https://github.com/foamrider/foamy-kit),
 vendored under `kit/` (never edit those files; sync from foamy-kit).
 
