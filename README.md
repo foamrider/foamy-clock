@@ -6,7 +6,7 @@ A clock, month calendar, and calendar agenda.
 
 ## Install
 
-Requires Omarchy Quattro and Python 3. Agenda access also uses
+Built for Omarchy 4.5; also loads on Omarchy 4.0.6. Requires Python 3. Agenda access also uses
 `python-gobject` and Evolution Data Server (`evolution-data-server`).
 
 For events, install GNOME Calendar (`gnome-calendar`) and select your calendars.
@@ -18,9 +18,26 @@ omarchy plugin add https://github.com/foamrider/foamy-clock.git --enable
 ## Use
 
 - Left-click the clock to open the calendar. Select a day to see its events.
-- Use the arrows to change month; click the header to return to today.
-- Open the cog to change time format, and agenda settings.
+- Use the chevrons (or the scroll wheel) to change month; click the header to return to today.
+- Open the cog to change the date locale, time format, bar formats and agenda settings.
 - Right-click the bar clock to cycle formats. Middle-click opens the timezone picker.
+
+Keyboard: arrows or `hjkl` move the day cursor (a day, or a week up/down),
+Enter or Space selects that day (or returns to today when there is no cursor),
+`[` `]` and `{` `}` step months and years, `t` is today, `w` flips the week
+start, `s` opens Settings, `r` refreshes the agenda, Page Up/Down scroll the
+agenda, Tab/Shift-Tab switch to the neighbouring bar panel and Esc closes.
+
+"Show seconds in the popup" affects the popup clock only. The bar shows
+seconds when its format contains them (for example `HH:mm:ss`); the bar label
+then ticks every second, otherwise every minute.
+
+The date locale setting "Omarchy language" (4.5; "System" on 4.0) uses the
+date conventions of the language picked in Omarchy Setup (on 4.0, the system
+locale). Pick a locale to override it.
+
+IPC (`omarchy-shell foamy.clock <fn>` on 4.5, `qs ipc call foamy.clock <fn>`):
+`open`, `close`, `toggle`, `settings`, `refresh`, `cycleFormat`, `toggleWeekStart`.
 
 The calendar shortcut opens GNOME Calendar by default; change it in settings.
 
@@ -31,8 +48,11 @@ with one range query per selected calendar. Event dots and daily agendas use the
 same data. Selecting a loaded day, including an empty day, is immediate and does
 not query Evolution or interrupt a background refresh.
 
-While the agenda is enabled, the current month and the next three calendar months
-are refreshed automatically, including while the popup is closed. The visible
+Nothing touches Evolution until you first open the popup: the bar only shows
+the time. On 4.5, with a bar on every monitor, one shared engine serves all of
+them. While a popup is open, the current month and the next three calendar
+months are refreshed automatically; when it is closed, nothing polls. Opening
+the popup shows cached data at once and refreshes stale months behind it. The visible
 month loads first; background months load one at a time and yield when you need
 another month or press Refresh. Fresh cached months are reused. Background work
 uses the configured agenda refresh interval, with due times checked each minute;
@@ -74,8 +94,10 @@ background loading completes; source failures and the fixed cache/event limits
 can prevent complete coverage.
 
 The cache lives at `$XDG_CACHE_HOME/foamy-clock/agenda-v3.json` (default:
-`~/.cache/foamy-clock/agenda-v3.json`). Older `agenda-v1.json` and `agenda-v2.json`
-caches are ignored and can be removed. Calendar accounts and events remain
+`~/.cache/foamy-clock/agenda-v3.json`). Writes are serialized with a lock file
+beside it, and older `agenda-v1.json`/`agenda-v2.json` caches are deleted on the
+next write. Event times without a time zone ("floating") are read in your local
+zone (`TZ`, or `/etc/localtime`; `TZ=:/etc/localtime` and absolute paths work). Calendar accounts and events remain
 managed by Evolution.
 
 ## Remove
@@ -99,4 +121,25 @@ Provided **as is**, without warranty or guaranteed support. Use at your own risk
 
 Language follows **Omarchy → Setup → Language** on Omarchy 4.5. Plugin language overrides are no longer used. Omarchy 4.0 displays interface text in English while keeping the system date locale and week start. Missing translations fall back to English.
 
-Translation checks: `python3 tests/i18n-runtime.py` uses the installed shell. Set `OMARCHY_PATH` to a 4.5 source tree to check live language switching against that version.
+Date patterns (for example "Friday, October 30" / "fredag 30. oktober") come
+from the plugin's translation catalogs, so they follow the Omarchy language. A
+date locale other than the Omarchy language (and 4.0) uses that locale's own
+long date format without the year.
+
+## Development
+
+`kit/` holds shared components copied from [foamy-kit](https://github.com/foamrider/foamy-kit); edit them there, not here.
+
+Shared UI parts come from [foamy-kit](https://github.com/foamrider/foamy-kit),
+vendored under `kit/` (never edit those files; sync from foamy-kit).
+
+```sh
+for t in tests/*-test.js tests/i18n.test.cjs; do node "$t"; done
+python3 -I -m unittest discover -s tests -p 'test_*.py'
+bash tests/kit-check.sh
+python3 tests/runtime.py --host both     # offscreen, needs ../foamy-kit
+python3 tests/i18n-runtime.py
+```
+
+`preview/Preview.qml` holds mock states for the foamy-kit preview harness
+(`foamy-kit/preview/render.py`).

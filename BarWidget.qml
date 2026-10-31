@@ -1,63 +1,49 @@
 import QtQuick
 import Quickshell
-import Quickshell.Io
 import qs.Commons
 import qs.Ui
+import "kit"
 import "Model.js" as Model
-import "Preferences.js" as Preferences
+import "Preferences.js" as Schema
 
 // Date/time label for the bar, and the host for the calendar popup.
 //
 // Left click reveals the calendar — asking "what is the date?" is what a
 // click on a clock means — right click walks the common label formats, and
 // middle click opens the timezone picker.
+//
+// The calendar and agenda state live in ClockService (once per shell); this
+// widget is built once per monitor and only renders the label, hosts its
+// popup (ClockPanel, content built on first open) and saves settings.
 BarWidget {
   id: root
   moduleName: "foamy.clock"
 
   property date displayDate: clock.date
 
-  function preference(key) { return Preferences.value(root.settings, key) }
-  readonly property string language: FoamyI18n.language
+  // Saved values read at once, even before the host reflects them back.
+  function preference(key) { return prefs.value(key) }
+  readonly property var effectiveSettings: prefs.effectiveSettings
   function tr(text) { return FoamyI18n.t(text) }
-  readonly property string localeName: Preferences.localeName(root.settings, FoamyI18n.formatLocale)
+  readonly property string localeName: Schema.localeName(preference("locale"), FoamyI18n.formatLocale)
   readonly property var displayLocale: Qt.locale(localeName)
   readonly property string configuredFormat: preference(vertical ? "verticalFormat" : "format")
   readonly property string configuredAltFormat: preference(vertical ? "verticalFormatAlt" : "formatAlt")
-  property string settingsError: ""
-  property var pendingPreferences: ({})
-  readonly property bool saving: preferencesSave.running
+  readonly property string settingsError: prefs.error !== "" ? tr(prefs.error) : ""
+  readonly property bool saving: prefs.busy
+  readonly property bool canRetry: prefs.canRetry
 
-  function savePreferences(values) {
-    var keys = Object.keys(values)
-    // Validate a batch before queuing any writes.
-    for (var i = 0; i < keys.length; i++) {
-      if (!Preferences.valid(keys[i], values[keys[i]])) {
-        settingsError = tr("Invalid setting.") + " " + tr(Preferences.field(keys[i]) ? Preferences.field(keys[i]).label : keys[i])
-        return
-      }
-    }
-    settingsError = ""
-    for (var j = 0; j < keys.length; j++) pendingPreferences[keys[j]] = values[keys[j]]
-    flushPreferences()
+  // Inline when the host allows it (instant, no process), else one
+  // `omarchy bar set` at a time; the newest value per key wins.
+  FoamyPrefsQueue {
+    id: prefs
+    bar: root.bar
+    moduleName: root.moduleName
+    fields: Schema.fields
+    settings: root.settings
   }
-  function flushPreferences() {
-    if (preferencesSave.running) return
-    var keys = Object.keys(pendingPreferences)
-    if (!keys.length) return
-    var key = keys[0], value = pendingPreferences[key]
-    delete pendingPreferences[key]
-    preferencesSave.command = ["omarchy-shell", "shell", "setBarWidget", root.moduleName, key, " " + JSON.stringify(value), "{}"]
-    preferencesSave.running = true
-  }
-  Process {
-    id: preferencesSave
-    stdout: StdioCollector { id: saveOutput; waitForEnd: true }
-    onExited: function(exitCode) {
-      if (exitCode !== 0 || saveOutput.text.trim() !== "ok") settingsError = tr("Could not save settings.")
-      Qt.callLater(root.flushPreferences)
-    }
-  }
+  function save(key, value) { prefs.save(key, value) }
+  function retrySave() { prefs.retry() }
 
   readonly property var formatRing: Model.clockFormatRing(configuredFormat, configuredAltFormat, Model.clockFormats(vertical))
 
@@ -66,8 +52,8 @@ BarWidget {
   readonly property string activeFormat: configuredFormat
   // Tick every second only when the chosen format displays seconds.
   readonly property bool showsSeconds: Model.clockNeedsSeconds(activeFormat)
-  readonly property string calendarIcon: "󰸗"
-  readonly property string clockIcon: ""
+  readonly property string calendarIcon: "\u{f0e17}"
+  readonly property string clockIcon: "\u{f017}"
   readonly property string formattedText: formatted(displayDate)
   readonly property var horizontalParts: formattedText.split(clockIcon)
   readonly property string dateText: horizontalParts.length > 1 ? String(horizontalParts[0]).trim() : formattedText
@@ -76,7 +62,8 @@ BarWidget {
 
   function refresh() {
     displayDate = new Date()
-    if (panelLoader.item && panelLoader.item.refresh) panelLoader.item.refresh()
+    // The shared state refreshes once, from the leader (an explicit request).
+    if (member.isLeader) ClockService.refresh()
   }
 
   function cycleFormat() {
@@ -84,9 +71,7 @@ BarWidget {
     var next = Model.nextClockFormat(formatRing, current)
     if (next === "" || next === current) return
 
-    var values = ({})
-    values[vertical ? "verticalFormat" : "format"] = next
-    root.savePreferences(values)
+    root.save(vertical ? "verticalFormat" : "format", next)
   }
 
   function formatted(date) {
@@ -96,22 +81,15 @@ BarWidget {
   // ---- Calendar popup. Shape contract for shell.summon/hide/toggle
   //      routing: Bar.findPanelWidget requires open/close/opened on the
   //      bar-widget root.
-  readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
-
-  function open() {
-    if (panelLoader.item) panelLoader.item.open()
-  }
-
-  function close() {
-    if (panelLoader.item) panelLoader.item.close()
-  }
-
-  function togglePanel() {
-    if (panelLoader.item) panelLoader.item.toggle()
-  }
+  readonly property bool opened: panel.opened
+  function open() { panel.open() }
+  function close() { panel.close() }
+  function togglePanel() { panel.toggle() }
+  function openSettings() { panel.openSettings() }
 
   function toggleWeekStart() {
-    if (panelLoader.item) panelLoader.item.toggleWeekStart()
+    var next = Model.toggledWeekStart(ClockService.weekStart)
+    save("weekStartDay", Model.weekStartSettingName(next))
   }
 
   // The clock fills more slot than it paints a mark for, at both
@@ -125,26 +103,21 @@ BarWidget {
   // Forwarded so this widget can stand in for the panel as the bar's popout
   // identity: Bar.requestPopout prefers closeForPopoutSwitch over close, and
   // KeyboardPanel reads popoutSwitchClosing back off its owner.
-  readonly property bool popoutSwitchClosing: panelLoader.item ? panelLoader.item.popoutSwitchClosing === true : false
+  readonly property bool popoutSwitchClosing: panel.popoutSwitchClosing === true
 
-  function closeForPopoutSwitch() {
-    if (panelLoader.item) panelLoader.item.closeForPopoutSwitch()
-  }
-
-  function injectPanel() {
-    var target = panelLoader.item
-    if (!target) return
-    if ("bar" in target) target.bar = root.bar
-    if ("settings" in target) target.settings = root.settings
-    if ("anchorItem" in target) target.anchorItem = button
-    if ("hostWidget" in target) target.hostWidget = root
-  }
+  function closeForPopoutSwitch() { panel.closeForPopoutSwitch() }
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
-  onBarChanged: injectPanel()
-  onSettingsChanged: injectPanel()
+  // Once per shell: the leader feeds the shared calendar state and owns IPC;
+  // an open popup on any monitor raises demand (the clock ticks only then).
+  FoamyMember { id: member; scope: "clock"; demanding: root.opened }
+  Binding { target: ClockService; property: "agendaEnabled"; value: root.preference("agendaEnabled"); when: member.isLeader; restoreMode: Binding.RestoreNone }
+  Binding { target: ClockService; property: "refreshMinutes"; value: root.preference("agendaRefreshMinutes"); when: member.isLeader; restoreMode: Binding.RestoreNone }
+  Binding { target: ClockService; property: "showSeconds"; value: root.preference("showSeconds"); when: member.isLeader; restoreMode: Binding.RestoreNone }
+  Binding { target: ClockService; property: "weekStart"; value: Model.normalizedWeekStart(root.preference("weekStartDay"), root.displayLocale.firstDayOfWeek); when: member.isLeader; restoreMode: Binding.RestoreNone }
+  Binding { target: ClockService; property: "demanded"; value: member.demanded; when: member.isLeader; restoreMode: Binding.RestoreNone }
 
   SystemClock {
     id: clock
@@ -152,24 +125,20 @@ BarWidget {
     onDateChanged: root.displayDate = date
   }
 
-  Loader {
-    id: panelLoader
-    active: true
-    // Inject preferences before Component.onCompleted so an opted-out agenda never starts a query.
-    Component.onCompleted: setSource(Qt.resolvedUrl("Panel.qml"), {
-      bar: root.bar, settings: root.settings, anchorItem: button, hostWidget: root
-    })
+  ClockPanel {
+    id: panel
     visible: false
-    onLoaded: {
-      root.injectPanel()
-      Qt.callLater(root.injectPanel)
-    }
+    bar: root.bar
+    settings: root.effectiveSettings
+    anchorItem: button
+    hostWidget: root
   }
 
-  IpcHandler {
+  FoamyIpc {
     target: "foamy.clock"
+    enabled: member.isLeader
 
-    function settings(): void { if (panelLoader.item) panelLoader.item.openSettings() }
+    function settings(): void { root.openSettings() }
     function refresh(): void { root.broadcast("refresh") }
     function cycleFormat(): void { root.cycleFormat() }
     function toggleWeekStart(): void { root.toggleWeekStart() }

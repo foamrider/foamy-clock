@@ -1,8 +1,6 @@
-singleton FoamyI18n 1.0 FoamyI18n.qml
+singleton ClockService 1.0 ClockService.qml
 BarWidget 1.0 BarWidget.qml
-ClockAction 1.0 ClockAction.qml
-ClockDropdown 1.0 ClockDropdown.qml
-ClockIcon 1.0 ClockIcon.qml
-ClockPopup 1.0 ClockPopup.qml
-Panel 1.0 Panel.qml
+ClockFormatLabel 1.0 ClockFormatLabel.qml
+ClockPanel 1.0 ClockPanel.qml
+ClockView 1.0 ClockView.qml
 SettingsPane 1.0 SettingsPane.qml
