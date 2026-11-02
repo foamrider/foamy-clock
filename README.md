@@ -49,9 +49,9 @@ same data. Selecting a loaded day, including an empty day, is immediate and does
 not query Evolution or interrupt a background refresh.
 
 On 4.5, with a bar on every monitor, one shared engine serves all of them.
-While a popup is open, the current month and the months ahead (**Months
-ahead**, 0–6, default 3) are refreshed automatically. With **Update in the
-background** (on by default) they are also kept fresh while the popup is
+While a popup is open, the current month and the months ahead (**Preload months
+ahead**, 0–6, default 3) are refreshed automatically. With **Update while the
+popup is closed** (on by default) they are also kept fresh while the popup is
 closed: a minute after the shell starts, then at the refresh interval, one month per minute, written
 to the disk cache only (no event data reaches the shell). Turn it off and
 nothing touches Evolution until you open the popup, and nothing polls while it

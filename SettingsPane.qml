@@ -196,7 +196,6 @@ FoamySettingsPage {
       width: parent.width
       compact: true
       label: root.label("agendaMonthsAhead")
-      description: FoamyI18n.t("Loaded ahead, so they open at once")
       value: String(root.current("agendaMonthsAhead"))
       options: [0, 1, 2, 3, 4, 5, 6].map(function(months) {
         return {value: String(months), label: months === 0 ? FoamyI18n.t("None") : FoamyI18n.tn("%1 months", months)}
@@ -207,7 +206,6 @@ FoamySettingsPage {
       visible: root.current("agendaEnabled") === true
       width: parent.width
       label: root.label("agendaBackgroundRefresh")
-      description: FoamyI18n.t("Keeps this month and the months ahead fresh while the popup is closed")
       checked: root.current("agendaBackgroundRefresh") === true
       onClicked: root.save("agendaBackgroundRefresh", !checked)
     }

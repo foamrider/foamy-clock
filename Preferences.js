@@ -102,7 +102,7 @@ var fields = [
   {
     "key": "agendaMonthsAhead",
     "type": "integer",
-    "label": "Months ahead",
+    "label": "Preload months ahead",
     "defaultValue": 3,
     "min": 0,
     "max": 6,
@@ -111,7 +111,7 @@ var fields = [
   {
     "key": "agendaBackgroundRefresh",
     "type": "boolean",
-    "label": "Update in the background",
+    "label": "Update while the popup is closed",
     "defaultValue": true
   },
   {

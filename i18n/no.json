@@ -50,15 +50,13 @@
   "Redo": "Gjør om",
   "Refresh calendars": "Oppdater kalendere",
   "Refresh every": "Oppdater hvert",
-  "Update in the background": "Oppdater i bakgrunnen",
-  "Months ahead": "Måneder fremover",
-  "Loaded ahead, so they open at once": "Lastes på forhånd, så de åpnes med en gang",
+  "Update while the popup is closed": "Oppdater mens vinduet er lukket",
+  "Preload months ahead": "Forhåndslast måneder fremover",
   "None": "Ingen",
   "%1 months": {
     "one": "%1 måned",
     "other": "%1 måneder"
   },
-  "Keeps this month and the months ahead fresh while the popup is closed": "Holder denne måneden og månedene fremover oppdatert mens vinduet er lukket",
   "Refreshing calendars": "Oppdaterer kalendere",
   "Retry": "Prøv igjen",
   "Right-click to change format": "Høyreklikk for å endre format",
