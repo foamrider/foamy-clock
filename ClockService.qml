@@ -30,9 +30,12 @@ QtObject {
   property bool activated: false
   readonly property bool agendaActive: activated && agendaEnabled
   // Background updates: with every popup closed, the month prefetch keeps
-  // this month and the next three fresh on disk (no event data reaches the
+  // this month and the months ahead fresh on disk (no event data reaches the
   // shell), so opening shows current events. Off: nothing polls while closed.
   property bool backgroundRefresh: true
+  // Months loaded ahead of the current one (0-6): with it, at most seven
+  // prefetched months, inside the helper's eight-view disk cache.
+  property int monthsAhead: 3
   readonly property bool backgroundActive: agendaEnabled && backgroundRefresh && !demanded
 
   // The agenda list scrolls back to the top when its day is replaced.
@@ -201,7 +204,8 @@ QtObject {
   function prefetchRanges(base) {
     base = base || root.today
     var ranges = []
-    for (var offset = 0; offset <= 3; offset++) {
+    var ahead = Math.max(0, Math.min(6, Math.floor(Number(root.monthsAhead) || 0)))
+    for (var offset = 0; offset <= ahead; offset++) {
       var month = Model.stepMonth(base.getFullYear(), base.getMonth(), offset)
       var first = Model.monthGrid(month.year, month.month, root.weekStart, "")[0].days[0]
       ranges.push({start: first.key,
@@ -216,7 +220,7 @@ QtObject {
         || cacheProcess.running || agendaProcess.running) return
     var ranges = root.prefetchRanges(background ? new Date() : root.today)
     var attempts = ({})
-    // Keep only four timestamps. Completed failures also get a cooldown;
+    // Keep only the horizon's timestamps. Completed failures also get a cooldown;
     // an unavailable account must not create an immediate retry loop.
     for (var range of ranges) {
       var key = range.start + ":" + range.end

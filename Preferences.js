@@ -100,6 +100,15 @@ var fields = [
     "step": 1
   },
   {
+    "key": "agendaMonthsAhead",
+    "type": "integer",
+    "label": "Months ahead",
+    "defaultValue": 3,
+    "min": 0,
+    "max": 6,
+    "step": 1
+  },
+  {
     "key": "agendaBackgroundRefresh",
     "type": "boolean",
     "label": "Update in the background",

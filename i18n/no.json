@@ -51,7 +51,14 @@
   "Refresh calendars": "Oppdater kalendere",
   "Refresh every": "Oppdater hvert",
   "Update in the background": "Oppdater i bakgrunnen",
-  "Keeps this month and the next three fresh while the popup is closed": "Holder denne måneden og de tre neste oppdatert mens vinduet er lukket",
+  "Months ahead": "Måneder fremover",
+  "Loaded ahead, so they open at once": "Lastes på forhånd, så de åpnes med en gang",
+  "None": "Ingen",
+  "%1 months": {
+    "one": "%1 måned",
+    "other": "%1 måneder"
+  },
+  "Keeps this month and the months ahead fresh while the popup is closed": "Holder denne måneden og månedene fremover oppdatert mens vinduet er lukket",
   "Refreshing calendars": "Oppdaterer kalendere",
   "Retry": "Prøv igjen",
   "Right-click to change format": "Høyreklikk for å endre format",

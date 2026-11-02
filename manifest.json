@@ -28,6 +28,7 @@
       "showTimeZone": true,
       "agendaEnabled": true,
       "agendaRefreshMinutes": 30,
+      "agendaMonthsAhead": 3,
       "agendaBackgroundRefresh": true,
       "calendarApp": "gnome-calendar",
       "showEventLocations": true
@@ -114,6 +115,15 @@
         "defaultValue": 30,
         "min": 1,
         "max": 1440,
+        "step": 1
+      },
+      {
+        "key": "agendaMonthsAhead",
+        "type": "integer",
+        "label": "Months ahead",
+        "defaultValue": 3,
+        "min": 0,
+        "max": 6,
         "step": 1
       },
       {

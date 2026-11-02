@@ -115,6 +115,7 @@ BarWidget {
   FoamyMember { id: member; scope: "clock"; demanding: root.opened }
   Binding { target: ClockService; property: "agendaEnabled"; value: root.preference("agendaEnabled"); when: member.isLeader; restoreMode: Binding.RestoreNone }
   Binding { target: ClockService; property: "refreshMinutes"; value: root.preference("agendaRefreshMinutes"); when: member.isLeader; restoreMode: Binding.RestoreNone }
+  Binding { target: ClockService; property: "monthsAhead"; value: root.preference("agendaMonthsAhead"); when: member.isLeader; restoreMode: Binding.RestoreNone }
   Binding { target: ClockService; property: "backgroundRefresh"; value: root.preference("agendaBackgroundRefresh"); when: member.isLeader; restoreMode: Binding.RestoreNone }
   Binding { target: ClockService; property: "showSeconds"; value: root.preference("showSeconds"); when: member.isLeader; restoreMode: Binding.RestoreNone }
   Binding { target: ClockService; property: "weekStart"; value: Model.normalizedWeekStart(root.preference("weekStartDay"), root.displayLocale.firstDayOfWeek); when: member.isLeader; restoreMode: Binding.RestoreNone }

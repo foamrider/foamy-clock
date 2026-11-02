@@ -19,7 +19,7 @@ const root = {
   lastAgendaRangeKey: '', lastAgendaRangeRefreshMs: 0,
   agendaRefreshIntervalMs: 1800000, now: new Date(),
   today: new Date(2026, 8, 27), weekStart: 1, prefetchAttempts: {},
-  agendaPrefetch: false, agendaRefreshPending: false, demanded: true, backgroundActive: false
+  agendaPrefetch: false, agendaRefreshPending: false, demanded: true, backgroundActive: false, monthsAhead: 3
 }
 let starts = 0
 let cancels = 0
@@ -251,6 +251,13 @@ root.prefetchAttempts = {}
 root.schedulePrefetch()
 assert.equal(starts, caughtUp)
 Object.assign(root, {activated: true, demanded: true, monthView: {...header, events}, prefetchAttempts: {}})
+
+// Months ahead (0-6) sets the horizon; out-of-range values clamp.
+for (const [ahead, count] of [[0, 1], [1, 2], [6, 7], [9, 7], [-2, 1], [undefined, 1]]) {
+  root.monthsAhead = ahead
+  assert.equal(root.prefetchRanges().length, count, `monthsAhead ${ahead}`)
+}
+root.monthsAhead = 3
 
 // Slow work at short intervals cannot starve the more distant months.
 const ranges = root.prefetchRanges()

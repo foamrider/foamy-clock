@@ -49,10 +49,10 @@ same data. Selecting a loaded day, including an empty day, is immediate and does
 not query Evolution or interrupt a background refresh.
 
 On 4.5, with a bar on every monitor, one shared engine serves all of them.
-While a popup is open, the current month and the next three calendar months
-are refreshed automatically. With **Update in the background** (on by
-default) they are also kept fresh while the popup is closed: a minute after
-the shell starts, then at the refresh interval, one month per minute, written
+While a popup is open, the current month and the months ahead (**Months
+ahead**, 0–6, default 3) are refreshed automatically. With **Update in the
+background** (on by default) they are also kept fresh while the popup is
+closed: a minute after the shell starts, then at the refresh interval, one month per minute, written
 to the disk cache only (no event data reaches the shell). Turn it off and
 nothing touches Evolution until you open the popup, and nothing polls while it
 is closed. Opening the popup shows cached data at once and refreshes stale
@@ -64,7 +64,7 @@ failed attempts wait for that interval before retrying.
 
 Month views are cached across shell restarts; there is no month-cache setting.
 Cached events remain visible while stale data refreshes in the background. The
-refresh button always requests fresh data for the visible month. The three-month
+refresh button always requests fresh data for the visible month. The months-ahead
 horizon rolls forward with the current date and uses your configured week start.
 
 The footer shows **Partial update · open calendar** when the selected day's
@@ -93,7 +93,7 @@ calendar worker or multiply the shell's in-memory month views.
 The private disk cache is limited to 8 MiB and eight recently used views; older
 views are evicted automatically. Retained months remain available offline. The
 first visit to an uncached month needs a refresh, and offline coverage depends
-on which views remain in the cache. The three months ahead become available as
+on which views remain in the cache. The months ahead become available as
 background loading completes; source failures and the fixed cache/event limits
 can prevent complete coverage.
 

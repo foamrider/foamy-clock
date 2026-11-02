@@ -51,7 +51,14 @@
   "Refresh calendars": "Refresh calendars",
   "Refresh every": "Refresh every",
   "Update in the background": "Update in the background",
-  "Keeps this month and the next three fresh while the popup is closed": "Keeps this month and the next three fresh while the popup is closed",
+  "Months ahead": "Months ahead",
+  "Loaded ahead, so they open at once": "Loaded ahead, so they open at once",
+  "None": "None",
+  "%1 months": {
+    "one": "%1 month",
+    "other": "%1 months"
+  },
+  "Keeps this month and the months ahead fresh while the popup is closed": "Keeps this month and the months ahead fresh while the popup is closed",
   "Refreshing calendars": "Refreshing calendars",
   "Retry": "Retry",
   "Right-click to change format": "Right-click to change format",
