@@ -34,9 +34,13 @@ function process() {
 const cacheProcess = process()
 const agendaProcess = process()
 const deferred = []
+// FoamyI18n with the kit's own updatedAgo over the plugin's English catalog.
+const kitI18n = fs.readFileSync(path.join(__dirname, '..', 'kit', 'FoamyI18n.qml'), 'utf8')
+const i18n = {t: (key, values) => require("./i18n.cjs").text(key, "en", values), tn: (key, count) => require("./i18n.cjs").plural(key, "en", count), number: String}
+vm.runInNewContext(kitI18n.slice(kitI18n.indexOf('  function updatedAgo('), kitI18n.indexOf('  function number(')) + '; i18n.updatedAgo = updatedAgo',
+  {i18n, t: i18n.t, tn: i18n.tn, Number, Math, isFinite, Date})
 const context = vm.createContext({root, service: root, cacheProcess, agendaProcess, Model,
-  Qt: {callLater: fn => deferred.push(fn)},
-  FoamyI18n: {t: (key, values) => require("./i18n.cjs").text(key, "en", values), tn: (key, count) => require("./i18n.cjs").plural(key, "en", count), number: String}})
+  Qt: {callLater: fn => deferred.push(fn)}, FoamyI18n: i18n})
 vm.runInContext(functions + status, context)
 for (const key of ['monthIsCurrent', 'showDay', 'showSelectedDay', 'requestAgendaDate', 'refreshAgenda', 'resetAgendaView', 'prefetchRanges', 'schedulePrefetch', 'finishPrefetch']) root[key] = context[key]
 for (const range of root.prefetchRanges()) root.prefetchAttempts[range.start + ':' + range.end] = Date.now()
@@ -96,6 +100,15 @@ root.selectedDateKey = '2026-09-01'
 root.showSelectedDay()
 assert.equal(root.agendaState, 'ok')
 assert.equal(context.updatedAgoText(), 'Updated just now')
+// A saved copy from yesterday reads in hours, and "Updating…" while
+// Evolution is asked for a fresh one (live check: "Updated 1283 minutes ago").
+const savedAt = root.lastAgendaRefreshMs
+root.lastAgendaRefreshMs = root.now.getTime() - 1283 * 60000
+assert.equal(context.updatedAgoText(), 'Updated 21 hours ago')
+root.agendaRefreshing = true
+assert.equal(context.updatedAgoText(), 'Updating…')
+root.agendaRefreshing = false
+root.lastAgendaRefreshMs = savedAt
 assert.equal(context.dateIsIncomplete('2026-08-31'), true)
 assert.equal(context.dateIsIncomplete('2026-09-01'), false)
 

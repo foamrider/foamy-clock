@@ -139,11 +139,10 @@ PanelKeyCatcher {
   function updatedAgoText() {
     if (service.agendaState === "error") return FoamyI18n.t("Calendar unavailable")
     if (service.agendaState === "partial") return FoamyI18n.t("Partial update · open calendar")
-    if (service.agendaState === "loading") return FoamyI18n.t("Updating…")
-    if (service.lastAgendaRefreshMs <= 0) return ""
-    var elapsedMinutes = Math.max(0, Math.floor((service.now.getTime() - service.lastAgendaRefreshMs) / 60000))
-    if (elapsedMinutes === 0) return FoamyI18n.t("Updated just now")
-    return FoamyI18n.tn("Updated %1 minutes ago", elapsedMinutes)
+    // The saved copy shows at once on open; while Evolution is asked for a
+    // fresh one, say so rather than the saved copy's age.
+    if (service.agendaState === "loading" || service.agendaRefreshing) return FoamyI18n.t("Updating…")
+    return FoamyI18n.updatedAgo(service.lastAgendaRefreshMs, service.now.getTime())
   }
 
   function agendaMessageText() {

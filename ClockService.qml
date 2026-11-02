@@ -85,7 +85,9 @@ QtObject {
   property double lastAgendaRangeRefreshMs: 0
   property string lastAgendaRangeKey: ""
   readonly property int agendaRefreshIntervalMs: Math.max(1, refreshMinutes) * 60000
-  readonly property bool agendaLoading: (agendaProcess.running && !agendaPrefetch) || cacheProcess.running
+  readonly property bool agendaLoading: agendaRefreshing || cacheProcess.running
+  // Evolution is being asked for the visible month (not a background prefetch).
+  readonly property bool agendaRefreshing: agendaProcess.running && !agendaPrefetch
   readonly property date agendaRangeStartDate: new Date(weeks[0].days[0].year, weeks[0].days[0].month, weeks[0].days[0].day)
   readonly property date agendaRangeEndDate: new Date(agendaRangeStartDate.getFullYear(), agendaRangeStartDate.getMonth(), agendaRangeStartDate.getDate() + 42)
   readonly property string agendaRangeStartKey: Model.keyForDate(agendaRangeStartDate)
