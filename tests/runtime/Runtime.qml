@@ -50,7 +50,13 @@ ShellRoot {
       eq(service.activated, false, "service idle before any popup opens")
       eq(service.agendaProcess.running || service.cacheProcess.running, false, "no Evolution or cache process before open")
       eq(service.clock.enabled, false, "the popup clock does not tick while hidden")
-      eq(service.refreshTimer.running || service.prefetchTimer.running, false, "no agenda timers while hidden")
+      // Background updates (default on): only the minute-check prefetch timer
+      // runs while hidden; its first check is a minute in. Off: nothing runs.
+      eq(service.refreshTimer.running, false, "no foreground refresh timer while hidden")
+      eq(service.backgroundRefresh && service.prefetchTimer.running, true, "background updates check due months while hidden")
+      service.backgroundRefresh = false
+      eq(service.prefetchTimer.running, false, "background updates off: no agenda timers while hidden")
+      service.backgroundRefresh = true
       eq(service.refreshMinutes, 45, "the leader feeds settings into the shared service")
       for (var i = 0; i < 3; i++) eq(panel(i).popup.bodyItem, null, "no popup body before open on bar " + i)
       eq(widget(0).displayDate instanceof Date, true, "bar label has a date")

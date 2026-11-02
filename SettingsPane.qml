@@ -191,6 +191,14 @@ FoamySettingsPage {
       })
       onChanged: function(next) { root.save("agendaRefreshMinutes", Number(next)) }
     }
+    FoamyToggle {
+      visible: root.current("agendaEnabled") === true
+      width: parent.width
+      label: root.label("agendaBackgroundRefresh")
+      description: FoamyI18n.t("Keeps this month and the next three fresh while the popup is closed")
+      checked: root.current("agendaBackgroundRefresh") === true
+      onClicked: root.save("agendaBackgroundRefresh", !checked)
+    }
     FoamyTextSettingField {
       width: parent.width
       label: root.label("calendarApp")

@@ -50,6 +50,8 @@
   "Redo": "Gjør om",
   "Refresh calendars": "Oppdater kalendere",
   "Refresh every": "Oppdater hvert",
+  "Update in the background": "Oppdater i bakgrunnen",
+  "Keeps this month and the next three fresh while the popup is closed": "Holder denne måneden og de tre neste oppdatert mens vinduet er lukket",
   "Refreshing calendars": "Oppdaterer kalendere",
   "Retry": "Prøv igjen",
   "Right-click to change format": "Høyreklikk for å endre format",

@@ -29,6 +29,11 @@ QtObject {
   // Set by activate() on the first popup open; never cleared.
   property bool activated: false
   readonly property bool agendaActive: activated && agendaEnabled
+  // Background updates: with every popup closed, the month prefetch keeps
+  // this month and the next three fresh on disk (no event data reaches the
+  // shell), so opening shows current events. Off: nothing polls while closed.
+  property bool backgroundRefresh: true
+  readonly property bool backgroundActive: agendaEnabled && backgroundRefresh && !demanded
 
   // The agenda list scrolls back to the top when its day is replaced.
   signal agendaReset()
@@ -191,10 +196,13 @@ QtObject {
     cacheProcess.running = true
   }
 
-  function prefetchRanges() {
+  // `base`: the first month (default today as the popup last saw it; the
+  // background uses the real date, as nothing ticks while closed).
+  function prefetchRanges(base) {
+    base = base || root.today
     var ranges = []
     for (var offset = 0; offset <= 3; offset++) {
-      var month = Model.stepMonth(root.today.getFullYear(), root.today.getMonth(), offset)
+      var month = Model.stepMonth(base.getFullYear(), base.getMonth(), offset)
       var first = Model.monthGrid(month.year, month.month, root.weekStart, "")[0].days[0]
       ranges.push({start: first.key,
         end: Model.keyForDate(new Date(first.year, first.month, first.day + 42))})
@@ -203,9 +211,10 @@ QtObject {
   }
 
   function schedulePrefetch() {
-    if (!root.agendaActive || !root.monthIsCurrent()
+    var background = root.backgroundActive
+    if (!(root.agendaActive && root.monthIsCurrent()) && !background
         || cacheProcess.running || agendaProcess.running) return
-    var ranges = root.prefetchRanges()
+    var ranges = root.prefetchRanges(background ? new Date() : root.today)
     var attempts = ({})
     // Keep only four timestamps. Completed failures also get a cooldown;
     // an unavailable account must not create an immediate retry loop.
@@ -219,7 +228,9 @@ QtObject {
     ranges.sort((a, b) => attempts[a.start + ":" + a.end] - attempts[b.start + ":" + b.end])
     for (var range of ranges) {
       var key = range.start + ":" + range.end
-      if (key === root.agendaRangeKey) continue
+      // An open popup refreshes its visible month itself; in the background
+      // that month is prefetched like the others.
+      if (key === root.agendaRangeKey && !background) continue
       if (Date.now() - attempts[key] < root.agendaRefreshIntervalMs) continue
       root.agendaPrefetch = true
       root.agendaRequestCancelled = false
@@ -234,7 +245,8 @@ QtObject {
 
   function finishPrefetch() {
     var key = root.agendaProcessRangeStartKey + ":" + root.agendaProcessRangeEndKey
-    if (!root.agendaRequestCancelled && root.prefetchRanges().some(range => range.start + ":" + range.end === key)) {
+    if (!root.agendaRequestCancelled && root.prefetchRanges(root.backgroundActive ? new Date() : root.today)
+        .some(range => range.start + ":" + range.end === key)) {
       var attempts = root.prefetchAttempts
       attempts[key] = Date.now()
       root.prefetchAttempts = attempts
@@ -243,7 +255,9 @@ QtObject {
     root.agendaPrefetch = false
     // Serialize disk readers/writers and workers through the same request
     // path. A foreground request interrupted this job, so satisfy it first.
-    Qt.callLater(root.requestAgendaDate)
+    // With the popup closed nothing else is due: the shell's month view
+    // catches up from the fresh disk copy on the next open.
+    if (root.demanded || root.agendaRefreshPending) Qt.callLater(root.requestAgendaDate)
   }
 
   function resetAgendaView() {
@@ -498,7 +512,7 @@ QtObject {
     }
     onExited: function(exitCode) {
       if (root.agendaPrefetch) {
-        if (root.agendaActive) root.finishPrefetch()
+        if (root.agendaActive || root.backgroundActive) root.finishPrefetch()
         else root.agendaPrefetch = false
         return
       }
@@ -523,10 +537,12 @@ QtObject {
   // Both timers run only while a popup is open; reopening refreshes anyway.
   property Timer prefetchTimer: Timer {
     // Check due times cheaply; event fetching still uses the configured
-    // refresh interval and only one bounded month worker at a time.
+    // refresh interval and only one bounded month worker at a time. In the
+    // background the first check is a minute after the shell starts, and
+    // one month is fetched per check.
     interval: 60000
     repeat: true
-    running: root.agendaActive && root.demanded
+    running: (root.agendaActive && root.demanded) || root.backgroundActive
     onTriggered: root.schedulePrefetch()
   }
 

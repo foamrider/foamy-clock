@@ -100,6 +100,12 @@ var fields = [
     "step": 1
   },
   {
+    "key": "agendaBackgroundRefresh",
+    "type": "boolean",
+    "label": "Update in the background",
+    "defaultValue": true
+  },
+  {
     "key": "calendarApp",
     "type": "string",
     "label": "Calendar app",

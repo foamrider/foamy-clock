@@ -48,11 +48,15 @@ with one range query per selected calendar. Event dots and daily agendas use the
 same data. Selecting a loaded day, including an empty day, is immediate and does
 not query Evolution or interrupt a background refresh.
 
-Nothing touches Evolution until you first open the popup: the bar only shows
-the time. On 4.5, with a bar on every monitor, one shared engine serves all of
-them. While a popup is open, the current month and the next three calendar
-months are refreshed automatically; when it is closed, nothing polls. Opening
-the popup shows cached data at once and refreshes stale months behind it. The visible
+On 4.5, with a bar on every monitor, one shared engine serves all of them.
+While a popup is open, the current month and the next three calendar months
+are refreshed automatically. With **Update in the background** (on by
+default) they are also kept fresh while the popup is closed: a minute after
+the shell starts, then at the refresh interval, one month per minute, written
+to the disk cache only (no event data reaches the shell). Turn it off and
+nothing touches Evolution until you open the popup, and nothing polls while it
+is closed. Opening the popup shows cached data at once and refreshes stale
+months behind it; the footer reads "Updating…" until they arrive. The visible
 month loads first; background months load one at a time and yield when you need
 another month or press Refresh. Fresh cached months are reused. Background work
 uses the configured agenda refresh interval, with due times checked each minute;

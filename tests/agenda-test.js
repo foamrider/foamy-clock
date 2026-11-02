@@ -19,7 +19,7 @@ const root = {
   lastAgendaRangeKey: '', lastAgendaRangeRefreshMs: 0,
   agendaRefreshIntervalMs: 1800000, now: new Date(),
   today: new Date(2026, 8, 27), weekStart: 1, prefetchAttempts: {},
-  agendaPrefetch: false, agendaRefreshPending: false
+  agendaPrefetch: false, agendaRefreshPending: false, demanded: true, backgroundActive: false
 }
 let starts = 0
 let cancels = 0
@@ -227,10 +227,35 @@ root.refreshAgenda(false)
 assert.equal(cancels, periodicCancels)
 agendaProcess.running = false
 
+// Background updates (every popup closed): before or after the first open,
+// the prefetch covers today's month too (by the real date, as nothing ticks
+// while closed), sends nothing to the shell and asks for no foreground view.
+Object.assign(root, {activated: false, demanded: false, backgroundActive: true, prefetchAttempts: {}, monthView: null})
+deferred.length = 0
+const realToday = new Date()
+const backgroundRanges = root.prefetchRanges(realToday)
+for (let offset = 0; offset <= 3; offset++) {
+  root.schedulePrefetch()
+  assert.equal(root.agendaPrefetch, true, 'background prefetch runs while closed')
+  assert.equal(root.agendaProcessRangeStartKey, backgroundRanges[offset].start)
+  agendaProcess.running = false
+  root.finishPrefetch()
+  assert.equal(deferred.length, 0, 'no foreground request while closed')
+}
+const caughtUp = starts
+root.schedulePrefetch()
+assert.equal(starts, caughtUp, 'four fresh months wait for the refresh interval')
+// Switched off (or agenda hidden): nothing runs while closed.
+root.backgroundActive = false
+root.prefetchAttempts = {}
+root.schedulePrefetch()
+assert.equal(starts, caughtUp)
+Object.assign(root, {activated: true, demanded: true, monthView: {...header, events}, prefetchAttempts: {}})
+
 // Slow work at short intervals cannot starve the more distant months.
 const ranges = root.prefetchRanges()
 root.prefetchAttempts = {[ranges[1].start + ':' + ranges[1].end]: Date.now() - 3600000}
 root.schedulePrefetch()
 assert.equal(root.agendaProcessRangeStartKey, ranges[2].start)
 console.log('ok — all 42 dates select locally, refresh survives day clicks, partial dates and atomic bounded messages')
-console.log('ok — three-month prefetch stays serial, yields to visible requests, respects cooldown and year/week boundaries')
+console.log('ok — three-month prefetch stays serial, yields to visible requests, respects cooldown and year/week boundaries, and runs in the background while closed')
