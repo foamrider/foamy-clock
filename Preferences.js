@@ -111,7 +111,7 @@ var fields = [
   {
     "key": "agendaBackgroundRefresh",
     "type": "boolean",
-    "label": "Update while the popup is closed",
+    "label": "Update in the background",
     "defaultValue": true
   },
   {
