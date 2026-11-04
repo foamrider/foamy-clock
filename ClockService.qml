@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "kit"
 import "Model.js" as Model
 
 // The calendar state and the Evolution agenda engine, once per shell.
@@ -43,7 +44,7 @@ QtObject {
 
   readonly property string helperPath: decodeURIComponent(Qt.resolvedUrl("calendar-events.py").toString().replace(/^file:\/\//, ""))
 
-  // ---- Today and the shown month. SystemClock keeps this honest across
+  // ---- Today and the shown month. FoamyWallClock keeps this honest across
   //      midnight while a popup is open; open() resets it to the real today.
   property date today: new Date()
   readonly property string todayKey: Model.keyForDate(today)
@@ -442,9 +443,9 @@ QtObject {
 
   // Ticks only while a popup is open: seconds when the popup shows them,
   // else minutes (for "Updated N minutes ago", ongoing events and midnight).
-  property SystemClock clock: SystemClock {
+  property FoamyWallClock clock: FoamyWallClock {
     enabled: root.demanded
-    precision: root.showSeconds ? SystemClock.Seconds : SystemClock.Minutes
+    step: root.showSeconds ? 1000 : 60000
     onDateChanged: {
       if (!root.demanded) return
       root.now = date
