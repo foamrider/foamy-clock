@@ -121,9 +121,9 @@ BarWidget {
   Binding { target: ClockService; property: "weekStart"; value: Model.normalizedWeekStart(root.preference("weekStartDay"), root.displayLocale.firstDayOfWeek); when: member.isLeader; restoreMode: Binding.RestoreNone }
   Binding { target: ClockService; property: "demanded"; value: member.demanded; when: member.isLeader; restoreMode: Binding.RestoreNone }
 
-  SystemClock {
+  FoamyWallClock {
     id: clock
-    precision: root.showsSeconds ? SystemClock.Seconds : SystemClock.Minutes
+    step: root.showsSeconds ? 1000 : 60000
     onDateChanged: root.displayDate = date
   }
 
