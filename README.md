@@ -6,7 +6,7 @@ A clock, month calendar, and calendar agenda.
 
 ## Install
 
-Built for Omarchy 4.5; also loads on Omarchy 4.0.6. Requires Python 3. Agenda access also uses
+Requires Omarchy 4.5 and Python 3. Agenda access also uses
 `python-gobject` and Evolution Data Server (`evolution-data-server`).
 
 For events, install GNOME Calendar (`gnome-calendar`) and select your calendars.
@@ -32,11 +32,10 @@ agenda, Tab/Shift-Tab switch to the neighbouring bar panel and Esc closes.
 seconds when its format contains them (for example `HH:mm:ss`); the bar label
 then ticks every second, otherwise every minute.
 
-The date locale setting "Omarchy language" (4.5; "System" on 4.0) uses the
-date conventions of the language picked in Omarchy Setup (on 4.0, the system
-locale). Pick a locale to override it.
+The date locale setting "Omarchy language" uses the date conventions of the
+language picked in Omarchy Setup. Pick a locale to override it.
 
-IPC (`omarchy-shell foamy.clock <fn>` on 4.5, `qs ipc call foamy.clock <fn>`):
+IPC (`omarchy-shell foamy.clock <fn>`, or `qs ipc call foamy.clock <fn>`):
 `open`, `close`, `toggle`, `settings`, `refresh`, `cycleFormat`, `toggleWeekStart`.
 
 The calendar shortcut opens GNOME Calendar by default; change it in settings.
@@ -123,16 +122,16 @@ Licensed under [MIT](LICENSE), with [Omarchy](LICENSE-OMARCHY) and
 
 Provided **as is**, without warranty or guaranteed support. Use at your own risk.
 
-Language follows **Omarchy → Setup → Language** on Omarchy 4.5. Plugin language overrides are no longer used. Omarchy 4.0 displays interface text in English while keeping the system date locale and week start. Missing translations fall back to English.
+## Language
+
+Language follows **Omarchy → Setup → Language** on Omarchy 4.5. Plugin language overrides are no longer used. Missing translations fall back to English.
 
 Date patterns (for example "Friday, October 30" / "fredag 30. oktober") come
 from the plugin's translation catalogs, so they follow the Omarchy language. A
-date locale other than the Omarchy language (and 4.0) uses that locale's own
+date locale other than the Omarchy language uses that locale's own
 long date format without the year.
 
 ## Development
-
-`kit/` holds shared components copied from [foamy-kit](https://github.com/foamrider/foamy-kit); edit them there, not here.
 
 Shared UI parts come from [foamy-kit](https://github.com/foamrider/foamy-kit),
 vendored under `kit/` (never edit those files; sync from foamy-kit).
@@ -141,9 +140,13 @@ vendored under `kit/` (never edit those files; sync from foamy-kit).
 for t in tests/*-test.js tests/i18n.test.cjs; do node "$t"; done
 python3 -I -m unittest discover -s tests -p 'test_*.py'
 bash tests/kit-check.sh
-python3 tests/runtime.py --host both     # offscreen, needs ../foamy-kit
+python3 tests/runtime.py                 # offscreen on the installed 4.5 shell; needs ../foamy-kit (FOAMY_KIT)
 python3 tests/i18n-runtime.py
 ```
+
+The runtime test uses the installed 4.5 shell unless `FOAMY_HOST_45` (a `shell`
+directory) or `OMARCHY_TEST_ROOT` (an Omarchy tree) names another; `--host 4.0`
+and `--host both` run 4.0 only when `FOAMY_HOST_40` names a 4.0 shell.
 
 `preview/Preview.qml` holds mock states for the foamy-kit preview harness
 (`foamy-kit/preview/render.py`).
