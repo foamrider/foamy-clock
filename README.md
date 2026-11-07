@@ -123,6 +123,8 @@ Licensed under [MIT](LICENSE), with [Omarchy](LICENSE-OMARCHY) and
 
 Provided **as is**, without warranty or guaranteed support. Use at your own risk.
 
+## Language
+
 Language follows **Omarchy → Setup → Language** on Omarchy 4.5. Plugin language overrides are no longer used. Omarchy 4.0 displays interface text in English while keeping the system date locale and week start. Missing translations fall back to English.
 
 Date patterns (for example "Friday, October 30" / "fredag 30. oktober") come
@@ -131,8 +133,6 @@ date locale other than the Omarchy language (and 4.0) uses that locale's own
 long date format without the year.
 
 ## Development
-
-`kit/` holds shared components copied from [foamy-kit](https://github.com/foamrider/foamy-kit); edit them there, not here.
 
 Shared UI parts come from [foamy-kit](https://github.com/foamrider/foamy-kit),
 vendored under `kit/` (never edit those files; sync from foamy-kit).
