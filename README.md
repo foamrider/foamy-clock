@@ -141,9 +141,13 @@ vendored under `kit/` (never edit those files; sync from foamy-kit).
 for t in tests/*-test.js tests/i18n.test.cjs; do node "$t"; done
 python3 -I -m unittest discover -s tests -p 'test_*.py'
 bash tests/kit-check.sh
-python3 tests/runtime.py --host both     # offscreen, needs ../foamy-kit
+python3 tests/runtime.py                 # offscreen on the installed 4.5 shell; needs ../foamy-kit (FOAMY_KIT)
 python3 tests/i18n-runtime.py
 ```
+
+The runtime test uses the installed 4.5 shell unless `FOAMY_HOST_45` (a `shell`
+directory) or `OMARCHY_TEST_ROOT` (an Omarchy tree) names another; `--host 4.0`
+and `--host both` run 4.0 only when `FOAMY_HOST_40` names a 4.0 shell.
 
 `preview/Preview.qml` holds mock states for the foamy-kit preview harness
 (`foamy-kit/preview/render.py`).
