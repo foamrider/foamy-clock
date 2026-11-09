@@ -9,6 +9,12 @@ A clock, month calendar, and calendar agenda.
 Requires Omarchy 4.5 and Python 3. Agenda access also uses
 `python-gobject` and Evolution Data Server (`evolution-data-server`).
 
+The agenda helper is Python on purpose, unlike the Rust helpers in other
+Foamy plugins. It reads calendars through Evolution's own library (libecal),
+which expands recurring events, exceptions and time zones. Evolution's D-Bus
+interface is private, changes version when its protocol changes, and returns
+only the master events, so a Rust helper would have to redo all of that.
+
 For events, install GNOME Calendar (`gnome-calendar`) and select your calendars.
 
 ```sh

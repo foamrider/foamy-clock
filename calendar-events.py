@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Bounded Evolution agenda worker, cache and JSON-lines bridge for the shell."""
+"""Bounded Evolution agenda worker, cache and JSON-lines bridge for the shell.
+
+Python on purpose (foamy-kit DESIGN.md, "Native helpers"): libecal through
+GObject introspection does the recurrence and time-zone expansion. The
+Evolution D-Bus API is private, versioned, and returns master events only.
+"""
 from __future__ import annotations
 
 import argparse
