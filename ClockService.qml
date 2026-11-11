@@ -79,10 +79,8 @@ QtObject {
   property int selectedCalendars: 0
   property double lastAgendaRefreshMs: 0
   property bool agendaCached: false
-  property string agendaProcessDateKey: ""
   property string agendaProcessRangeStartKey: ""
   property string agendaProcessRangeEndKey: ""
-  property string cacheProcessDateKey: ""
   property string cacheProcessRangeStartKey: ""
   property string cacheProcessRangeEndKey: ""
   property bool agendaRequestCancelled: false
@@ -198,7 +196,6 @@ QtObject {
       root.refreshAgenda(false)
       return
     }
-    root.cacheProcessDateKey = root.selectedDateKey
     root.cacheProcessRangeStartKey = root.agendaRangeStartKey
     root.cacheProcessRangeEndKey = root.agendaRangeEndKey
     cacheProcess.running = true
@@ -247,7 +244,6 @@ QtObject {
       root.agendaPrefetch = true
       root.agendaRequestCancelled = false
       root.agendaForceRefresh = false
-      root.agendaProcessDateKey = range.start
       root.agendaProcessRangeStartKey = range.start
       root.agendaProcessRangeEndKey = range.end
       agendaProcess.running = true
@@ -313,14 +309,13 @@ QtObject {
     root.agendaForceRefresh = force
     root.agendaPayloadApplied = false
     root.pendingMonth = null
-    root.agendaProcessDateKey = root.selectedDateKey
     root.agendaProcessRangeStartKey = root.agendaRangeStartKey
     root.agendaProcessRangeEndKey = root.agendaRangeEndKey
     if (root.agendaEvents.length === 0 && root.lastAgendaRefreshMs <= 0) root.agendaState = "loading"
     agendaProcess.running = true
   }
 
-  function applyAgendaPayload(raw, fromCache, expectedDateKey, rangeStart, rangeEnd) {
+  function applyAgendaPayload(raw, fromCache, rangeStart, rangeEnd) {
     if (!root.agendaEnabled || rangeStart !== root.agendaRangeStartKey
         || rangeEnd !== root.agendaRangeEndKey) return false
     try {
@@ -478,15 +473,12 @@ QtObject {
       "python3",
       root.helperPath,
       "--cached",
-      "--date",
-      root.cacheProcessDateKey,
       "--range-start", root.cacheProcessRangeStartKey,
       "--range-end", root.cacheProcessRangeEndKey
     ]
     stdout: SplitParser {
       onRead: data => {
-        root.applyAgendaPayload(data, true, root.cacheProcessDateKey,
-          root.cacheProcessRangeStartKey, root.cacheProcessRangeEndKey)
+        root.applyAgendaPayload(data, true, root.cacheProcessRangeStartKey, root.cacheProcessRangeEndKey)
       }
     }
     onExited: Qt.callLater(function() {
@@ -509,8 +501,6 @@ QtObject {
       "10",
       "python3",
       root.helperPath,
-      "--date",
-      root.agendaProcessDateKey,
       "--range-start",
       root.agendaProcessRangeStartKey,
       "--range-end",
@@ -520,8 +510,8 @@ QtObject {
     stdout: SplitParser {
       onRead: data => {
         if (root.agendaPrefetch) return
-        if (root.applyAgendaPayload(data, false, root.agendaProcessDateKey,
-            root.agendaProcessRangeStartKey, root.agendaProcessRangeEndKey)) root.agendaPayloadApplied = true
+        if (root.applyAgendaPayload(data, false, root.agendaProcessRangeStartKey,
+            root.agendaProcessRangeEndKey)) root.agendaPayloadApplied = true
       }
     }
     onExited: function(exitCode) {

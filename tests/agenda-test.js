@@ -53,7 +53,7 @@ dates['2026-08-31'].events = [0]
 dates['2026-09-01'].events = [1]
 const header = {kind: 'month-start', date: root.agendaRangeStartKey, rangeEnd: root.agendaRangeEndKey, state: 'ok', complete: true, events: [], dates, cached: false, selectedCalendars: 1, updatedAt: Math.floor(Date.now() / 1000)}
 const events = [{id: 'work:1', title: 'Planning', color: '#aabbcc'}, {id: 'work:2', title: 'Review', color: '#aabbcc'}]
-const apply = (payload, cached=false) => context.applyAgendaPayload(JSON.stringify(payload), cached, '2026-08-31', root.agendaRangeStartKey, root.agendaRangeEndKey)
+const apply = (payload, cached=false) => context.applyAgendaPayload(JSON.stringify(payload), cached, root.agendaRangeStartKey, root.agendaRangeEndKey)
 const chunk = {...header, kind: 'month-events', events}
 const end = {...header, kind: 'month-end'}
 apply(header)
@@ -118,7 +118,7 @@ apply(header)
 assert.equal(root.monthView, previous)
 assert.equal(apply(end), false) // References point to events never delivered.
 assert.equal(root.monthView, previous)
-assert.equal(context.applyAgendaPayload('x'.repeat(262145), false, '', root.agendaRangeStartKey, root.agendaRangeEndKey), false)
+assert.equal(context.applyAgendaPayload('x'.repeat(262145), false, root.agendaRangeStartKey, root.agendaRangeEndKey), false)
 apply(header)
 for (let i=0; i<11; i++) apply({...chunk, events: []})
 assert.equal(root.pendingMonth, null)
