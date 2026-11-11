@@ -13,10 +13,13 @@ import "Model.js" as Model
 // The leader widget (FoamyMember) feeds it the settings; any widget's popup
 // raises demand while it is open.
 //
-// Nothing here runs until the first popup opens (activate()): the bar shows
-// only the time, so Evolution Data Server is never woken just for the bar.
-// While no popup is open the clock and the periodic refresh are paused; on
-// open, stale data is shown from the cache at once and refreshed behind it.
+// The shell's month view, the popup clock and the visible-month refresh wait
+// for the first popup open (activate()) and pause while every popup is
+// closed; on open, stale data is shown from the cache at once and refreshed
+// behind it. With every popup closed, only "Update in the background" (on
+// by default) reaches Evolution: one month per minute check, the first a
+// minute after the shell starts, written to the disk cache only. Off,
+// Evolution Data Server is never woken just for the bar.
 QtObject {
   id: root
 
@@ -538,7 +541,8 @@ QtObject {
     }
   }
 
-  // Both timers run only while a popup is open; reopening refreshes anyway.
+  // The refresh timer runs only while a popup is open (reopening refreshes
+  // anyway); the prefetch timer also runs closed for background updates.
   property Timer prefetchTimer: Timer {
     // Check due times cheaply; event fetching still uses the configured
     // refresh interval and only one bounded month worker at a time. In the
