@@ -3,7 +3,8 @@
 
 Uses the foamy-kit preview harness (temp HOME/XDG, no Wayland/Hyprland,
 software renderer; 4.5 QML is loaded, never its scripts). The session bus is
-pointed at a dead address so the agenda worker cannot reach a live EDS.
+the harness's private bus, which has no service files, so the agenda worker
+can neither reach nor activate a live EDS.
 Usage: tests/runtime.py [--host 4.5|4.0|both] [--language en|no]
 
 The 4.5 host is FOAMY_HOST_45, else $OMARCHY_TEST_ROOT/shell, else the
@@ -36,7 +37,6 @@ def run(host, language):
     shell = (Path(__file__).parent / "runtime/Runtime.qml").read_text()
     test = harness.Run(host, shell, plugin=ROOT, language=language, prefix="foamy-clock-runtime-", fakebin=FAKEBIN)
     test.env["FOAMY_LANG"] = language
-    test.env["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=" + str(test.base / "no-bus")
     test.run(timeout=30)
     result = [line for line in test.log.splitlines() if "FOAMY RESULT" in line]
     print(f"{'PASS' if test.ok else 'FAIL'} {host}/{language} {result[-1].split('RESULT ')[-1] if result else ''}")
