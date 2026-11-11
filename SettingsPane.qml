@@ -1,7 +1,4 @@
 import QtQuick
-import qs.Commons
-import qs.Commons as Commons
-import qs.Ui
 import "kit"
 import "kit/FoamyPrefs.js" as Prefs
 import "Model.js" as Model
