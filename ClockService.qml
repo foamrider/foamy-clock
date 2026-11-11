@@ -113,7 +113,11 @@ QtObject {
   }
   onPrefetchHorizonKeyChanged: {
     root.prefetchAttempts = ({})
-    Qt.callLater(root.schedulePrefetch)
+    // Only an open popup prefetches the new horizon at once. With every popup
+    // closed, the minute checks (prefetchTimer) do it: the leader's settings
+    // and locale move weekStart while the shell starts, and that must not wake
+    // Evolution before the first check, a minute in.
+    if (root.demanded) Qt.callLater(root.schedulePrefetch)
   }
   onAgendaEnabledChanged: {
     // Drop visible data immediately. In-flight results are ignored when disabled.

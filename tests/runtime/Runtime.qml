@@ -40,6 +40,18 @@ ShellRoot {
   property string boundSetting: "a"
   Kit.FoamyDropdown { id: bound; value: shell.boundSetting; options: ["a", "b", "c"] }
 
+  // Background updates start with the first minute check, never at shell
+  // start: count every agenda/cache process that starts before the first open.
+  property int startsBeforeOpen: 0
+  Connections {
+    target: Clock.ClockService.agendaProcess
+    function onStarted() { if (!Clock.ClockService.activated) shell.startsBeforeOpen++ }
+  }
+  Connections {
+    target: Clock.ClockService.cacheProcess
+    function onStarted() { if (!Clock.ClockService.activated) shell.startsBeforeOpen++ }
+  }
+
   function widget(i) { return bars.itemAt(i).widget }
   function panel(i) { return widget(i).children.filter(c => c.popup !== undefined)[0] }
 
@@ -49,6 +61,7 @@ ShellRoot {
       var service = Clock.ClockService
       eq(service.activated, false, "service idle before any popup opens")
       eq(service.agendaProcess.running || service.cacheProcess.running, false, "no Evolution or cache process before open")
+      eq(shell.startsBeforeOpen, 0, "none started since shell start either")
       eq(service.clock.enabled, false, "the popup clock does not tick while hidden")
       // Background updates (default on): only the minute-check prefetch timer
       // runs while hidden; its first check is a minute in. Off: nothing runs.
