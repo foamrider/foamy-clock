@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "harness"
@@ -9,7 +10,9 @@ import "plugin/kit" as Kit
 // Runtime checks of the real clock widget on a host shell (offscreen):
 // three bar instances (three monitors) share one ClockService; nothing
 // starts before the first popup open; the popup body is built lazily;
-// exactly one IPC target is live; i18n plurals and catalog date patterns.
+// exactly one IPC target is live; i18n plurals and catalog date patterns;
+// the calendar shortcut (fake omarchy-cmd-present and omarchy-launch-or-focus
+// from runtime.py, so no real app starts).
 ShellRoot {
   id: shell
   readonly property string host: Quickshell.env("FOAMY_HOST")
@@ -142,9 +145,43 @@ ShellRoot {
       eq(widget(0).preference("showSeconds"), false, "a saved value reads back at once (FoamyPrefsQueue)")
       widget(0).save("calendarApp", "a;b")
       check(widget(0).settingsError !== "", "invalid value reports an error")
-      console.log("FOAMY RESULT " + host + "/" + lang + " checks=" + checks + " failures=" + failures)
-      console.log(failures === 0 ? "FOAMY DONE" : "FOAMY FAIL total")
-      Qt.quit()
+      // A calendar app Omarchy cannot find: an error, nothing launched.
+      widget(0).save("calendarApp", "foamy-missing-calendar")
+      panel(0).openCalendar()
+      launchCheck.start()
+    }
+  }
+  FileView { id: launchedFile; path: Quickshell.env("FOAMY_OUT") + "/launched"; blockLoading: true; printErrors: false }
+  function launched() { launchedFile.reload(); return launchedFile.text() }
+  function finish() {
+    console.log("FOAMY RESULT " + host + "/" + lang + " checks=" + checks + " failures=" + failures)
+    console.log(failures === 0 ? "FOAMY DONE" : "FOAMY FAIL total")
+    Qt.quit()
+  }
+  // Polls instead of fixed sleeps: each step waits (10 s at most) for the
+  // launch check's own outcome.
+  Timer {
+    id: launchCheck
+    interval: 100; repeat: true
+    property int step: 0
+    property int ticks: 0
+    onTriggered: {
+      if (++ticks > 100) { check(false, "calendar launch step " + step + " timed out"); stop(); shell.finish(); return }
+      if (step === 0) {
+        if (panel(0).launchError === "") return
+        check(shell.launched() === "", "missing calendar app: nothing launched")
+        widget(0).save("calendarApp", "foamy-test-calendar")
+        widget(0).open()
+        panel(0).openCalendar()
+        step = 1; ticks = 0
+        return
+      }
+      if (shell.launched() === "") return
+      eq(shell.launched(), "foamy-test-calendar\n", "calendar app present: launched through omarchy-launch-or-focus")
+      eq(widget(0).opened, false, "and the popup closes")
+      eq(panel(0).launchError, "", "with no error")
+      stop()
+      shell.finish()
     }
   }
 }

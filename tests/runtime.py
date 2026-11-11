@@ -24,10 +24,17 @@ if not os.environ.get("FOAMY_HOST_45"):
 sys.path.insert(0, str(KIT / "preview"))
 import harness  # noqa: E402
 
+# The calendar shortcut's host commands: only "foamy-test-calendar" is
+# installed, and a launch is recorded in the run's out directory instead.
+FAKEBIN = {
+    "omarchy-cmd-present": '#!/bin/sh\n[ "$#" -eq 1 ] && [ "$1" = foamy-test-calendar ]\n',
+    "omarchy-launch-or-focus": '#!/bin/sh\nprintf "%s\\n" "$*" >>"$FOAMY_OUT/launched"\n',
+}
+
 
 def run(host, language):
     shell = (Path(__file__).parent / "runtime/Runtime.qml").read_text()
-    test = harness.Run(host, shell, plugin=ROOT, language=language, prefix="foamy-clock-runtime-")
+    test = harness.Run(host, shell, plugin=ROOT, language=language, prefix="foamy-clock-runtime-", fakebin=FAKEBIN)
     test.env["FOAMY_LANG"] = language
     test.env["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=" + str(test.base / "no-bus")
     test.run(timeout=30)

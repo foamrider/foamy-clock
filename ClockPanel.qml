@@ -90,10 +90,11 @@ Panel {
 
   Process {
     id: calendarLaunch
-    // Check PATH first; detach the app so its lifetime is independent of this
+    // Check PATH first (Omarchy's `command -v` check, the name as an
+    // argument); detach the app so its lifetime is independent of this
     // popup. The name is a bare command (Preferences.js pattern): it reaches
     // an `eval` inside omarchy-launch-or-focus.
-    command: ["sh", "-c", 'command -v "$1" >/dev/null 2>&1', "foamy-clock", root.preference("calendarApp")]
+    command: ["omarchy-cmd-present", root.preference("calendarApp")]
     onExited: function(exitCode) {
       root.launchError = exitCode === 0 ? "" : FoamyI18n.t("Calendar app could not be started.")
       if (exitCode === 0) {
