@@ -203,6 +203,21 @@ assert.equal(root.agendaForceRefresh, true)
 assert.equal(root.agendaRefreshPending, false)
 agendaProcess.running = false
 
+// A refresh asked for during the disk read (the `r` key; the button is
+// disabled then) runs when the read ends, even when the disk copy is fresh.
+root.monthView = {...header, events}
+cacheProcess.running = true
+root.refreshAgenda(true)
+assert.equal(agendaProcess.running, false)
+cacheProcess.running = false
+root.refreshAgenda(false) // cacheProcess.onExited
+assert.equal(agendaProcess.running, true)
+assert.equal(root.agendaPrefetch, false)
+assert.equal(root.agendaForceRefresh, true)
+assert.equal(root.agendaRefreshPending, false)
+agendaProcess.running = false
+deferred.length = 0
+
 // Before the first popup open nothing reaches Evolution (no cache read either).
 root.activated = false
 root.prefetchAttempts = {}

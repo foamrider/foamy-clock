@@ -285,7 +285,9 @@ QtObject {
   function refreshAgenda(force) {
     if (!root.agendaActive) return
     if (agendaProcess.running || cacheProcess.running) {
-      if (force && root.agendaPrefetch && agendaProcess.running) {
+      // The disk read ends in refreshAgenda(false), which takes this over.
+      if (force && cacheProcess.running) root.agendaRefreshPending = true
+      else if (force && root.agendaPrefetch && agendaProcess.running) {
         root.agendaRefreshPending = true
         root.agendaRequestCancelled = true
         agendaProcess.signal(15)
