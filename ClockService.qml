@@ -234,7 +234,10 @@ QtObject {
     root.prefetchAttempts = attempts
     // Serve never-attempted and oldest months first. Short refresh intervals
     // must not let the nearest month repeatedly starve the farther months.
-    ranges.sort((a, b) => attempts[a.start + ":" + a.end] - attempts[b.start + ":" + b.end])
+    // Ties go nearest first. QV4's sort is not stable, so the tie-break is explicit.
+    var nearest = ranges.slice()
+    ranges.sort((a, b) => attempts[a.start + ":" + a.end] - attempts[b.start + ":" + b.end]
+      || nearest.indexOf(a) - nearest.indexOf(b))
     for (var range of ranges) {
       var key = range.start + ":" + range.end
       // An open popup refreshes its visible month itself; in the background

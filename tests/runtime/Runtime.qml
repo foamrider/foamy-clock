@@ -62,6 +62,12 @@ ShellRoot {
       eq(service.activated, false, "service idle before any popup opens")
       eq(service.agendaProcess.running || service.cacheProcess.running, false, "no Evolution or cache process before open")
       eq(shell.startsBeforeOpen, 0, "none started since shell start either")
+      // Never-attempted months go nearest first: this month is the one the
+      // popup opens on. (QV4's Array.sort is not stable, unlike node's.)
+      service.prefetchAttempts = ({})
+      service.schedulePrefetch()
+      eq(service.agendaProcessRangeStartKey, service.prefetchRanges(new Date())[0].start,
+        "the first background prefetch is this month")
       eq(service.clock.enabled, false, "the popup clock does not tick while hidden")
       // Background updates (default on): only the minute-check prefetch timer
       // runs while hidden; its first check is a minute in. Off: nothing runs.
