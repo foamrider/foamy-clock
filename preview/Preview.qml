@@ -11,14 +11,49 @@ Item {
   property var previewStates: ["agenda", "empty", "error", "settings", "settings-error"]
   property string previewState: "agenda"
   property int settleMs: 700
-  readonly property Item popup: popup
+  readonly property var popup: previewPopup
 
   readonly property var service: Clock.ClockService
-  function at(hour, minute) { return Math.floor(new Date(2026, 9, 30, hour, minute).getTime() / 1000) }
+  function at(hour, minute) {
+    return Math.floor(new Date(2026, 9, 30, hour, minute).getTime() / 1000)
+  }
   readonly property var sample: [
-    { id: "work:1", title: "Team standup", calendar: "Work", location: "Room 4", color: "#7aa2f7", allDay: false, start: at(9, 0), end: at(9, 15), startDate: "", endDate: "" },
-    { id: "work:2", title: "Design review: foamy kit", calendar: "Work", location: "Video call", color: "#7aa2f7", allDay: false, start: at(10, 0), end: at(11, 0), startDate: "", endDate: "" },
-    { id: "home:1", title: "Pick up bike", calendar: "Personal", location: "", color: "#9ece6a", allDay: false, start: at(16, 30), end: at(17, 0), startDate: "", endDate: "" }
+    {
+      id: "work:1",
+      title: "Team standup",
+      calendar: "Work",
+      location: "Room 4",
+      color: "#7aa2f7",
+      allDay: false,
+      start: at(9, 0),
+      end: at(9, 15),
+      startDate: "",
+      endDate: ""
+    },
+    {
+      id: "work:2",
+      title: "Design review: foamy kit",
+      calendar: "Work",
+      location: "Video call",
+      color: "#7aa2f7",
+      allDay: false,
+      start: at(10, 0),
+      end: at(11, 0),
+      startDate: "",
+      endDate: ""
+    },
+    {
+      id: "home:1",
+      title: "Pick up bike",
+      calendar: "Personal",
+      location: "",
+      color: "#9ece6a",
+      allDay: false,
+      start: at(16, 30),
+      end: at(17, 0),
+      startDate: "",
+      endDate: ""
+    }
   ]
 
   function apply() {
@@ -27,10 +62,33 @@ Item {
     s.now = s.today
     s.timeZoneName = "Europe/Oslo"
     s.weekStart = 1
-    s.viewYear = 2026; s.viewMonth = 9
+    s.viewYear = 2026
+    s.viewMonth = 9
     s.selectedDate = new Date(2026, 9, 30)
-    s.calendarDates = { "2026-10-30": [{ id: "work", color: "#7aa2f7" }, { id: "home", color: "#9ece6a" }],
-      "2026-10-27": [{ id: "work", color: "#7aa2f7" }], "2026-11-03": [{ id: "home", color: "#9ece6a" }] }
+    s.calendarDates = {
+      "2026-10-30": [
+        {
+          id: "work",
+          color: "#7aa2f7"
+        },
+        {
+          id: "home",
+          color: "#9ece6a"
+        }
+      ],
+      "2026-10-27": [
+        {
+          id: "work",
+          color: "#7aa2f7"
+        }
+      ],
+      "2026-11-03": [
+        {
+          id: "home",
+          color: "#9ece6a"
+        }
+      ]
+    }
     s.selectedCalendars = 2
     s.lastAgendaRefreshMs = s.now.getTime() - 4 * 60000
     s.agendaEvents = previewState === "agenda" ? sample : []
@@ -40,7 +98,7 @@ Item {
   Component.onCompleted: apply()
 
   FoamyPopup {
-    id: popup
+    id: previewPopup
     anchorItem: preview.anchorItem
     bar: preview.bar
     open: true
@@ -48,6 +106,7 @@ Item {
     maxHeight: 0
     body: Component {
       Clock.ClockView {
+        // `popup` is the root's property (previewPopup): no id is named popup.
         settings: ({})
         availableHeight: popup.availableCardHeight
         verticalInset: popup.verticalContentInset

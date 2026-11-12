@@ -1,7 +1,6 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import qs.Commons
 import qs.Ui
 import "kit"
 import "kit/FoamyPrefs.js" as Prefs
@@ -21,7 +20,10 @@ Panel {
 
   property var anchorItem: null
   // Settings page state: show() opens the popup if needed; resets on close only.
-  FoamySettingsState { id: settingsState; panel: root }
+  FoamySettingsState {
+    id: settingsState
+    panel: root
+  }
   readonly property alias editingSettings: settingsState.editing
   property string launchError: ""
   readonly property alias popup: popup
@@ -34,17 +36,26 @@ Panel {
   property var hostWidget: null
   readonly property var barIdentity: hostWidget || root
 
-  function preference(key) { return Prefs.value(Schema.fields, root.settings, key) }
+  function preference(key) {
+    return Prefs.value(Schema.fields, root.settings, key)
+  }
 
   function openSettings() {
     settingsState.show()
-    Qt.callLater(function() { if (popup.bodyItem) popup.bodyItem.settingsOpened() })
+    Qt.callLater(function () {
+      if (popup.bodyItem)
+        popup.bodyItem.settingsOpened()
+    })
   }
   function closeSettings() {
     settingsState.hide()
-    Qt.callLater(function() { if (popup.bodyItem) popup.bodyItem.forceActiveFocus() })
+    Qt.callLater(function () {
+      if (popup.bodyItem)
+        popup.bodyItem.forceActiveFocus()
+    })
   }
-  onOpenedChanged: if (!opened) launchError = ""
+  onOpenedChanged: if (!opened)
+    launchError = ""
 
   function open() {
     ClockService.refresh()
@@ -54,8 +65,9 @@ Panel {
     // shared flag. Deferring means the panel taking over always wins, while
     // a handoff to a panel that does not manage the flag still leaves it
     // cleared rather than stuck on.
-    Qt.callLater(function() {
-      if (root.opened) setCenterHoverRevealSuppressed(true)
+    Qt.callLater(function () {
+      if (root.opened)
+        setCenterHoverRevealSuppressed(true)
     })
   }
 
@@ -65,8 +77,10 @@ Panel {
   }
 
   function toggle() {
-    if (root.opened) root.close()
-    else root.open()
+    if (root.opened)
+      root.close()
+    else
+      root.open()
   }
 
   function switchPanel(direction) {
@@ -85,16 +99,18 @@ Panel {
   }
 
   function openCalendar() {
-    if (!calendarLaunch.running) calendarLaunch.running = true
+    if (!calendarLaunch.running)
+      calendarLaunch.running = true
   }
 
   Process {
     id: calendarLaunch
-    // Check PATH first; detach the app so its lifetime is independent of this
+    // Check PATH first (Omarchy's `command -v` check, the name as an
+    // argument); detach the app so its lifetime is independent of this
     // popup. The name is a bare command (Preferences.js pattern): it reaches
     // an `eval` inside omarchy-launch-or-focus.
-    command: ["sh", "-c", 'command -v "$1" >/dev/null 2>&1', "foamy-clock", root.preference("calendarApp")]
-    onExited: function(exitCode) {
+    command: ["omarchy-cmd-present", root.preference("calendarApp")]
+    onExited: function (exitCode) {
       root.launchError = exitCode === 0 ? "" : FoamyI18n.t("Calendar app could not be started.")
       if (exitCode === 0) {
         Quickshell.execDetached(["omarchy-launch-or-focus", root.preference("calendarApp")])
@@ -129,11 +145,18 @@ Panel {
         onCloseRequestedByView: root.editingSettings ? root.closeSettings() : root.close()
         onSettingsRequested: root.openSettings()
         onSettingsClosed: root.closeSettings()
-        onSwitchPanelRequested: function(direction) { root.switchPanel(direction) }
+        onSwitchPanelRequested: function (direction) {
+          root.switchPanel(direction)
+        }
         onCalendarRequested: root.openCalendar()
-        onSaveRequested: function(key, value) { if (root.hostWidget) root.hostWidget.save(key, value) }
-        onRetryRequested: if (root.hostWidget) root.hostWidget.retrySave()
-        onWeekStartToggleRequested: if (root.hostWidget) root.hostWidget.toggleWeekStart()
+        onSaveRequested: function (key, value) {
+          if (root.hostWidget)
+            root.hostWidget.save(key, value)
+        }
+        onRetryRequested: if (root.hostWidget)
+          root.hostWidget.retrySave()
+        onWeekStartToggleRequested: if (root.hostWidget)
+          root.hostWidget.toggleWeekStart()
       }
     }
   }

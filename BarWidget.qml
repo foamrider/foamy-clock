@@ -1,5 +1,4 @@
 import QtQuick
-import Quickshell
 import qs.Commons
 import qs.Ui
 import "kit"
@@ -22,9 +21,13 @@ BarWidget {
   property date displayDate: clock.date
 
   // Saved values read at once, even before the host reflects them back.
-  function preference(key) { return prefs.value(key) }
+  function preference(key) {
+    return prefs.value(key)
+  }
   readonly property var effectiveSettings: prefs.effectiveSettings
-  function tr(text) { return FoamyI18n.t(text) }
+  function tr(text) {
+    return FoamyI18n.t(text)
+  }
   readonly property string localeName: Schema.localeName(preference("locale"), FoamyI18n.formatLocale)
   readonly property var displayLocale: Qt.locale(localeName)
   readonly property string configuredFormat: preference(vertical ? "verticalFormat" : "format")
@@ -42,8 +45,12 @@ BarWidget {
     fields: Schema.fields
     settings: root.settings
   }
-  function save(key, value) { prefs.save(key, value) }
-  function retrySave() { prefs.retry() }
+  function save(key, value) {
+    prefs.save(key, value)
+  }
+  function retrySave() {
+    prefs.retry()
+  }
 
   readonly property var formatRing: Model.clockFormatRing(configuredFormat, configuredAltFormat, Model.clockFormats(vertical))
 
@@ -63,14 +70,15 @@ BarWidget {
   function refresh() {
     displayDate = new Date()
     // The shared state refreshes once, from the leader (an explicit request).
-    if (member.isLeader) ClockService.refresh()
+    if (member.isLeader)
+      ClockService.refresh()
   }
 
   function cycleFormat() {
     var current = String(configuredFormat)
     var next = Model.nextClockFormat(formatRing, current)
-    if (next === "" || next === current) return
-
+    if (next === "" || next === current)
+      return
     root.save(vertical ? "verticalFormat" : "format", next)
   }
 
@@ -82,10 +90,18 @@ BarWidget {
   //      routing: Bar.findPanelWidget requires open/close/opened on the
   //      bar-widget root.
   readonly property bool opened: panel.opened
-  function open() { panel.open() }
-  function close() { panel.close() }
-  function togglePanel() { panel.toggle() }
-  function openSettings() { panel.openSettings() }
+  function open() {
+    panel.open()
+  }
+  function close() {
+    panel.close()
+  }
+  function togglePanel() {
+    panel.toggle()
+  }
+  function openSettings() {
+    panel.openSettings()
+  }
 
   function toggleWeekStart() {
     var next = Model.toggledWeekStart(ClockService.weekStart)
@@ -105,21 +121,69 @@ BarWidget {
   // KeyboardPanel reads popoutSwitchClosing back off its owner.
   readonly property bool popoutSwitchClosing: panel.popoutSwitchClosing === true
 
-  function closeForPopoutSwitch() { panel.closeForPopoutSwitch() }
+  function closeForPopoutSwitch() {
+    panel.closeForPopoutSwitch()
+  }
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
   // Once per shell: the leader feeds the shared calendar state and owns IPC;
   // an open popup on any monitor raises demand (the clock ticks only then).
-  FoamyMember { id: member; scope: "clock"; demanding: root.opened }
-  Binding { target: ClockService; property: "agendaEnabled"; value: root.preference("agendaEnabled"); when: member.isLeader; restoreMode: Binding.RestoreNone }
-  Binding { target: ClockService; property: "refreshMinutes"; value: root.preference("agendaRefreshMinutes"); when: member.isLeader; restoreMode: Binding.RestoreNone }
-  Binding { target: ClockService; property: "monthsAhead"; value: root.preference("agendaMonthsAhead"); when: member.isLeader; restoreMode: Binding.RestoreNone }
-  Binding { target: ClockService; property: "backgroundRefresh"; value: root.preference("agendaBackgroundRefresh"); when: member.isLeader; restoreMode: Binding.RestoreNone }
-  Binding { target: ClockService; property: "showSeconds"; value: root.preference("showSeconds"); when: member.isLeader; restoreMode: Binding.RestoreNone }
-  Binding { target: ClockService; property: "weekStart"; value: Model.normalizedWeekStart(root.preference("weekStartDay"), root.displayLocale.firstDayOfWeek); when: member.isLeader; restoreMode: Binding.RestoreNone }
-  Binding { target: ClockService; property: "demanded"; value: member.demanded; when: member.isLeader; restoreMode: Binding.RestoreNone }
+  FoamyMember {
+    id: member
+    scope: "clock"
+    demanding: root.opened
+  }
+  Binding {
+    target: ClockService
+    property: "agendaEnabled"
+    value: root.preference("agendaEnabled")
+    when: member.isLeader
+    restoreMode: Binding.RestoreNone
+  }
+  Binding {
+    target: ClockService
+    property: "refreshMinutes"
+    value: root.preference("agendaRefreshMinutes")
+    when: member.isLeader
+    restoreMode: Binding.RestoreNone
+  }
+  Binding {
+    target: ClockService
+    property: "monthsAhead"
+    value: root.preference("agendaMonthsAhead")
+    when: member.isLeader
+    restoreMode: Binding.RestoreNone
+  }
+  Binding {
+    target: ClockService
+    property: "backgroundRefresh"
+    value: root.preference("agendaBackgroundRefresh")
+    when: member.isLeader
+    restoreMode: Binding.RestoreNone
+  }
+  Binding {
+    target: ClockService
+    property: "showSeconds"
+    value: root.preference("showSeconds")
+    when: member.isLeader
+    restoreMode: Binding.RestoreNone
+  }
+  Binding {
+    target: ClockService
+    property: "weekStart"
+    value: Model.normalizedWeekStart(root.preference("weekStartDay"), root.displayLocale.firstDayOfWeek)
+    when: member.isLeader
+    restoreMode: Binding.RestoreNone
+  }
+  Binding {
+    target: ClockService
+    property: "demanded"
+    value: member.demanded
+    when: member.isLeader
+    restoreMode: Binding.RestoreNone
+  }
 
   FoamyWallClock {
     id: clock
@@ -140,15 +204,33 @@ BarWidget {
     target: "foamy.clock"
     enabled: member.isLeader
 
-    function settings(): void { root.openSettings() }
-    function refresh(): void { root.broadcast("refresh") }
-    function cycleFormat(): void { root.cycleFormat() }
-    function toggleWeekStart(): void { root.toggleWeekStart() }
-    function open(): void { root.open() }
-    function close(): void { root.close() }
-    function show(): void { root.open() }
-    function hide(): void { root.close() }
-    function toggle(): void { root.togglePanel() }
+    function settings(): void {
+      root.openSettings()
+    }
+    function refresh(): void {
+      root.broadcast("refresh")
+    }
+    function cycleFormat(): void {
+      root.cycleFormat()
+    }
+    function toggleWeekStart(): void {
+      root.toggleWeekStart()
+    }
+    function open(): void {
+      root.open()
+    }
+    function close(): void {
+      root.close()
+    }
+    function show(): void {
+      root.open()
+    }
+    function hide(): void {
+      root.close()
+    }
+    function toggle(): void {
+      root.togglePanel()
+    }
   }
 
   WidgetButton {
@@ -164,10 +246,14 @@ BarWidget {
     verticalPadding: 8.75
     tooltipText: root.tr("Right-click to change format")
 
-    onPressed: function(b) {
-      if (b === Qt.RightButton) root.cycleFormat()
-      else if (b === Qt.MiddleButton) { if (root.bar) root.bar.run("omarchy-menu-timezone") }
-      else root.togglePanel()
+    onPressed: function (b) {
+      if (b === Qt.RightButton)
+        root.cycleFormat()
+      else if (b === Qt.MiddleButton) {
+        if (root.bar)
+          root.bar.run("omarchy-menu-timezone")
+      } else
+        root.togglePanel()
     }
 
     Row {
@@ -233,9 +319,7 @@ BarWidget {
           height: Style.bar.iconSlot
           text: modelData
           fontFamily: button.fontFamily
-          fontSize: modelData.length > 3
-            ? button.fontSize * 0.9
-            : button.fontSize
+          fontSize: modelData.length > 3 ? button.fontSize * 0.9 : button.fontSize
           color: button.foreground
         }
       }

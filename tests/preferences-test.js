@@ -46,7 +46,7 @@ assert.equal(JSON.stringify(inline), JSON.stringify(['foamy.clock', {format: 'HH
 const cli = F.save({shell: {updateEntryInline: () => false}}, 'foamy.clock', P.fields, settings, 'format', 'HH:mm:ss')
 assert.equal(JSON.stringify(cli.command), JSON.stringify(['omarchy', 'bar', 'set', 'foamy.clock', 'format', '"HH:mm:ss"', '--json']))
 assert.equal(F.save(bar, 'foamy.clock', P.fields, settings, 'calendarApp', 'x;y').ok, false)
-// Date patterns derived from a locale drop the year (4.0 / chosen date locale).
+// Date patterns derived from a chosen date locale drop the year.
 assert.equal(M.dateWithoutYear('dddd d. MMMM yyyy'), 'dddd d. MMMM')
 assert.equal(M.dateWithoutYear('dddd, MMMM d, yyyy'), 'dddd, MMMM d')
 assert.equal(M.dateWithoutYear('yyyy年M月d日dddd'), 'M月d日dddd')

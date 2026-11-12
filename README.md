@@ -9,6 +9,12 @@ A clock, month calendar, and calendar agenda.
 Requires Omarchy 4.5 and Python 3. Agenda access also uses
 `python-gobject` and Evolution Data Server (`evolution-data-server`).
 
+The agenda helper is Python on purpose, unlike the Rust helpers in other
+Foamy plugins. It reads calendars through Evolution's own library (libecal),
+which expands recurring events, exceptions and time zones. Evolution's D-Bus
+interface is private, changes version when its protocol changes, and returns
+only the master events, so a Rust helper would have to redo all of that.
+
 For events, install GNOME Calendar (`gnome-calendar`) and select your calendars.
 
 ```sh
@@ -137,16 +143,23 @@ Shared UI parts come from [foamy-kit](https://github.com/foamrider/foamy-kit),
 vendored under `kit/` (never edit those files; sync from foamy-kit).
 
 ```sh
+mise install                             # the pinned linters and formatters (mise.toml)
+tests/validate.sh                        # kit checks, linters, formatters, then tests/suite.sh
+tests/validate.sh --ci                   # what CI runs: no Quickshell, no Omarchy host
+```
+
+`tests/suite.sh` runs the tests on their own (`--ci`: node and the helper's
+Python tests only; `--fast`: everything but the offscreen runtime tests):
+
+```sh
 for t in tests/*-test.js tests/i18n.test.cjs; do node "$t"; done
 python3 -I -m unittest discover -s tests -p 'test_*.py'
-bash tests/kit-check.sh
-python3 tests/runtime.py                 # offscreen on the installed 4.5 shell; needs ../foamy-kit (FOAMY_KIT)
-python3 tests/i18n-runtime.py
+python3 tests/runtime.py                 # offscreen on the installed 4.5 shell; needs foamy-kit (FOAMY_KIT)
+python3 "$FOAMY_KIT/preview/i18n_runtime.py" .   # the catalogs in a live shell
 ```
 
 The runtime test uses the installed 4.5 shell unless `FOAMY_HOST_45` (a `shell`
-directory) or `OMARCHY_TEST_ROOT` (an Omarchy tree) names another; `--host 4.0`
-and `--host both` run 4.0 only when `FOAMY_HOST_40` names a 4.0 shell.
+directory) or `OMARCHY_TEST_ROOT` (an Omarchy tree) names another.
 
 `preview/Preview.qml` holds mock states for the foamy-kit preview harness
 (`foamy-kit/preview/render.py`).

@@ -26,9 +26,7 @@ class CalendarEventsTest(unittest.TestCase):
         self.assertEqual(CALENDAR_EVENTS.normalize_color("#83D754"), "#83d754")
 
     def test_normalize_rgb_color(self) -> None:
-        self.assertEqual(
-            CALENDAR_EVENTS.normalize_color("rgb(28,113,216)"), "#1c71d8"
-        )
+        self.assertEqual(CALENDAR_EVENTS.normalize_color("rgb(28,113,216)"), "#1c71d8")
 
     def test_invalid_color_uses_theme_accent(self) -> None:
         self.assertEqual(
@@ -37,9 +35,7 @@ class CalendarEventsTest(unittest.TestCase):
         )
 
     def test_clean_text_flattens_calendar_fields(self) -> None:
-        self.assertEqual(
-            CALENDAR_EVENTS.clean_text("  Planning\n  room  "), "Planning room"
-        )
+        self.assertEqual(CALENDAR_EVENTS.clean_text("  Planning\n  room  "), "Planning room")
 
     def test_timestamp_prefers_occurrence_timezone(self) -> None:
         occurrence_timezone = object()
@@ -55,9 +51,7 @@ class CalendarEventsTest(unittest.TestCase):
 
         occurrence = Occurrence()
 
-        self.assertEqual(
-            CALENDAR_EVENTS.unix_timestamp(occurrence, fallback_timezone), 123
-        )
+        self.assertEqual(CALENDAR_EVENTS.unix_timestamp(occurrence, fallback_timezone), 123)
         self.assertIs(occurrence.converted_with, occurrence_timezone)
 
     def test_timestamp_uses_client_timezone_as_fallback(self) -> None:
@@ -73,75 +67,126 @@ class CalendarEventsTest(unittest.TestCase):
 
         occurrence = Occurrence()
 
-        self.assertEqual(
-            CALENDAR_EVENTS.unix_timestamp(occurrence, fallback_timezone), 456
-        )
+        self.assertEqual(CALENDAR_EVENTS.unix_timestamp(occurrence, fallback_timezone), 456)
         self.assertIs(occurrence.converted_with, fallback_timezone)
 
-    def payload(self, state="ok", kind="day", start=date(2026, 8, 24)):
-        result = CALENDAR_EVENTS.base_payload(kind, start, start + timedelta(days=1 if kind == "day" else 42), state)
+    def payload(self, state="ok", start=date(2026, 8, 24), events=()):
+        """A 42-day month view; `events` all fall on its first date."""
+        result = CALENDAR_EVENTS.base_payload(start, start + timedelta(days=42), state)
         result["updatedAt"] = 123456
+        result["events"] = list(events)
+        result["dates"][start.isoformat()]["events"] = list(range(len(result["events"])))
         return result
 
+    def lines(self, payload):
+        """The shell messages emit_view prints for a view, encoded."""
+        with patch("builtins.print") as output:
+            CALENDAR_EVENTS.emit_view(payload)
+        return [call.args[0].encode() for call in output.call_args_list]
+
     def event(self, **values):
-        result = {"id": "calendar:event:1", "title": "Planning", "location": "Room", "calendar": "Work", "color": "", "allDay": True, "start": 0, "end": 0, "startDate": "2026-08-24", "endDate": "2026-08-25"}
+        result = {
+            "id": "calendar:event:1",
+            "title": "Planning",
+            "location": "Room",
+            "calendar": "Work",
+            "color": "",
+            "allDay": True,
+            "start": 0,
+            "end": 0,
+            "startDate": "2026-08-24",
+            "endDate": "2026-08-25",
+        }
         result.update(values)
         return result
 
-    def fetch(self, count, kind="day", title="Planning", cancelled=False, span=1):
+    def fetch(self, count, title="Planning", cancelled=False, span=1):
         class Occurrence:
-            def __init__(self, day): self.day = day
-            def is_date(self): return True
-            def get_year(self): return self.day.year
-            def get_month(self): return self.day.month
-            def get_day(self): return self.day.day
+            def __init__(self, day):
+                self.day = day
+
+            def is_date(self):
+                return True
+
+            def get_year(self):
+                return self.day.year
+
+            def get_month(self):
+                return self.day.month
+
+            def get_day(self):
+                return self.day.day
+
         start = datetime(2026, 8, 24, tzinfo=timezone.utc)
-        component = SimpleNamespace(get_status=lambda: "cancelled" if cancelled else "ok", get_summary=lambda: title, get_location=lambda: "Room", get_uid=lambda: f"event-{self.visited}")
+        component = SimpleNamespace(
+            get_status=lambda: "cancelled" if cancelled else "ok",
+            get_summary=lambda: title,
+            get_location=lambda: "Room",
+            get_uid=lambda: f"event-{self.visited}",
+        )
         self.visited = 0
+
         def generate(_start, _end, _cancel, callback, _data):
             for _ in range(count):
                 self.visited += 1
-                if not callback(component, Occurrence(start.date()), Occurrence(start.date() + timedelta(days=span)), None, None):
+                if not callback(
+                    component, Occurrence(start.date()), Occurrence(start.date() + timedelta(days=span)), None, None
+                ):
                     break
-        client = SimpleNamespace(generate_instances_sync=generate)
-        ecal = SimpleNamespace(Client=SimpleNamespace(connect_sync=lambda *_: client), ClientSourceType=SimpleNamespace(EVENTS=1))
-        ical = SimpleNamespace(PropertyStatus=SimpleNamespace(CANCELLED="cancelled"))
-        return CALENDAR_EVENTS.fetch_source_events(SimpleNamespace(get_uid=lambda: "calendar"), "Work", "#aabbcc", start, start + timedelta(days=1 if kind == "day" else 42), ecal, ical, kind)
 
-    def test_dense_day_stops_and_retains_fixed_number(self):
+        client = SimpleNamespace(generate_instances_sync=generate)
+        ecal = SimpleNamespace(
+            Client=SimpleNamespace(connect_sync=lambda *_: client), ClientSourceType=SimpleNamespace(EVENTS=1)
+        )
+        ical = SimpleNamespace(PropertyStatus=SimpleNamespace(CANCELLED="cancelled"))
+        return CALENDAR_EVENTS.fetch_source_events(
+            SimpleNamespace(get_uid=lambda: "calendar"),
+            "Work",
+            "#aabbcc",
+            start,
+            start + timedelta(days=42),
+            ecal,
+            ical,
+        )
+
+    def test_dense_day_retains_fixed_number(self):
         for count in (2000, 200000):
-            events, error = self.fetch(count)
-            self.assertEqual(len(events), CALENDAR_EVENTS.MAX_EVENTS)
-            self.assertEqual(self.visited, CALENDAR_EVENTS.MAX_EVENTS + 1)
-            self.assertEqual(error, "limited")
+            month, error = self.fetch(count)
+            self.assertEqual(sorted(month["dates"]["2026-08-24"]["events"]), list(range(CALENDAR_EVENTS.MAX_EVENTS)))
+            self.assertEqual(month["dates"]["2026-08-24"]["state"], "partial")
+            self.assertEqual(self.visited, min(count, CALENDAR_EVENTS.MAX_OCCURRENCES + 1))
+            self.assertEqual(error, "")
 
     def test_huge_unicode_fields_are_bounded_before_normalizing(self):
-        events, error = self.fetch(1, title="🙂 \n" * 100000)
-        self.assertLessEqual(len(events[0]["title"]), 256)
-        self.assertTrue(events[0]["title"].endswith("…"))
-        self.assertEqual(error, "limited")
-        payload = self.payload()
-        payload["events"] = [self.event(title="🙂" * 256, location="🙂" * 128, calendar="🙂" * 80) for _ in range(100)]
+        month, error = self.fetch(1, title="🙂 \n" * 100000)
+        self.assertLessEqual(len(month["events"][0]["title"]), 256)
+        self.assertTrue(month["events"][0]["title"].endswith("…"))
+        self.assertEqual(month["dates"]["2026-08-24"]["state"], "partial")
+        self.assertEqual(error, "")
+        payload = self.payload(
+            events=[
+                self.event(id=f"e{i}", title="🙂" * 256, location="🙂" * 128, calendar="🙂" * 80) for i in range(100)
+            ]
+        )
         self.assertTrue(CALENDAR_EVENTS.valid_payload(payload))
-        self.assertLess(len(CALENDAR_EVENTS.encode(payload)), CALENDAR_EVENTS.MAX_RESPONSE_BYTES)
+        self.assertTrue(all(len(line) < CALENDAR_EVENTS.MAX_RESPONSE_BYTES for line in self.lines(payload)))
 
     def test_control_characters_cannot_expand_shell_messages(self):
-        events, _ = self.fetch(100, title="a\x01" * 128)
-        self.assertTrue(all("\x01" not in event["title"] for event in events))
-        payload = self.payload()
-        payload["events"] = events
-        self.assertTrue(CALENDAR_EVENTS.valid_payload(payload))
-        self.assertLess(len(CALENDAR_EVENTS.encode(payload)), CALENDAR_EVENTS.MAX_RESPONSE_BYTES)
+        month, _ = self.fetch(100, title="a\x01" * 128)
+        self.assertEqual(len(month["events"]), 100)
+        self.assertTrue(all("\x01" not in event["title"] for event in month["events"]))
+        self.assertTrue(CALENDAR_EVENTS.valid_payload(month))
+        self.assertTrue(all(len(line) < CALENDAR_EVENTS.MAX_RESPONSE_BYTES for line in self.lines(month)))
 
     def test_month_occurrence_work_is_bounded(self):
-        month, error = self.fetch(200000, "month")
+        month, error = self.fetch(200000)
         self.assertEqual(len(month["events"]), 100)
         self.assertEqual(self.visited, CALENDAR_EVENTS.MAX_OCCURRENCES + 1)
         self.assertEqual(month["state"], "partial")
         self.assertTrue(CALENDAR_EVENTS.valid_payload(month))
 
     def test_spanning_event_is_stored_once_for_all_dates(self):
-        month, error = self.fetch(1, "month", span=42)
+        month, error = self.fetch(1, span=42)
         self.assertEqual(len(month["events"]), 1)
         self.assertEqual(len(month["dates"]), 42)
         self.assertTrue(all(day["events"] == [0] for day in month["dates"].values()))
@@ -149,7 +194,7 @@ class CalendarEventsTest(unittest.TestCase):
         self.assertEqual(error, "")
 
     def test_busy_day_does_not_mark_other_days_incomplete(self):
-        month, _ = self.fetch(101, "month")
+        month, _ = self.fetch(101)
         self.assertEqual(month["dates"]["2026-08-24"]["state"], "partial")
         self.assertEqual(month["dates"]["2026-08-25"]["state"], "ok")
         self.assertEqual(month["dates"]["2026-08-25"]["events"], [])
@@ -158,15 +203,15 @@ class CalendarEventsTest(unittest.TestCase):
         builder = CALENDAR_EVENTS.MonthBuilder(date(2026, 8, 1), date(2026, 9, 12))
         keys = list(builder.payload["dates"])
         for i in range(4200):
-            builder.add(self.event(id=f"event-{i}", title="🙂" * 256, location="🙂" * 128, calendar="🙂" * 80), [keys[i % 42]])
+            builder.add(
+                self.event(id=f"event-{i}", title="🙂" * 256, location="🙂" * 128, calendar="🙂" * 80), [keys[i % 42]]
+            )
         month = builder.finish()
         self.assertLessEqual(len(month["events"]), CALENDAR_EVENTS.MAX_MONTH_EVENTS)
         self.assertLessEqual(len(CALENDAR_EVENTS.encode(month)), CALENDAR_EVENTS.MAX_MONTH_BYTES)
         self.assertEqual(month["state"], "partial")
         self.assertTrue(CALENDAR_EVENTS.valid_payload(month))
-        with patch("builtins.print") as output:
-            CALENDAR_EVENTS.emit_view(month)
-        lines = [call.args[0].encode() for call in output.call_args_list]
+        lines = self.lines(month)
         self.assertLessEqual(len(lines), 12)
         self.assertTrue(all(len(line) <= CALENDAR_EVENTS.MAX_RESPONSE_BYTES for line in lines))
         self.assertLess(sum(map(len, lines)), CALENDAR_EVENTS.MAX_MONTH_BYTES + 65536)
@@ -179,7 +224,10 @@ class CalendarEventsTest(unittest.TestCase):
                 builder = CALENDAR_EVENTS.MonthBuilder(start, start + timedelta(days=42))
                 keys = list(builder.payload["dates"])
                 for i in range(1000):
-                    builder.add(self.event(id=f"event-{i}", title="🙂" * 256, location="🙂" * 128, calendar="🙂" * 80), [keys[i % 42]])
+                    builder.add(
+                        self.event(id=f"event-{i}", title="🙂" * 256, location="🙂" * 128, calendar="🙂" * 80),
+                        [keys[i % 42]],
+                    )
                 CALENDAR_EVENTS.store_view(builder.finish(), path)
                 self.assertLessEqual(path.stat().st_size, CALENDAR_EVENTS.MAX_CACHE_BYTES)
                 if month == 4:
@@ -189,7 +237,7 @@ class CalendarEventsTest(unittest.TestCase):
             self.assertEqual(list(views.values())[-1]["date"], "2026-06-01")
 
     def test_invalid_month_references_and_size_are_rejected(self):
-        month = CALENDAR_EVENTS.base_payload("month", date(2026, 8, 1), date(2026, 9, 12), "ok")
+        month = CALENDAR_EVENTS.base_payload(date(2026, 8, 1), date(2026, 9, 12), "ok")
         month["dates"]["2026-08-01"]["events"] = [0]
         self.assertFalse(CALENDAR_EVENTS.valid_payload(month))
         month["events"] = [self.event()]
@@ -197,15 +245,18 @@ class CalendarEventsTest(unittest.TestCase):
         month["dates"]["2026-08-01"]["events"] = [0, 0]
         self.assertFalse(CALENDAR_EVENTS.valid_payload(month))
         flood = "import os; os.write(1, b'x' * (3 * 1024 * 1024))"
-        self.assertIsNone(CALENDAR_EVENTS.run_bounded_worker([sys.executable, "-c", flood], max_bytes=CALENDAR_EVENTS.MAX_MONTH_BYTES))
+        self.assertIsNone(
+            CALENDAR_EVENTS.run_bounded_worker([sys.executable, "-c", flood], max_bytes=CALENDAR_EVENTS.MAX_MONTH_BYTES)
+        )
 
     def test_failed_dates_keep_cached_events_while_good_dates_update(self):
         start, end = date(2026, 8, 24), date(2026, 8, 26)
         old = CALENDAR_EVENTS.MonthBuilder(start, end)
         old.add(self.event(), ["2026-08-24", "2026-08-25"])
         cached = old.finish()
-        for day in cached["dates"].values(): day["updatedAt"] = 100
-        fresh = CALENDAR_EVENTS.base_payload("month", start, end, "ok")
+        for day in cached["dates"].values():
+            day["updatedAt"] = 100
+        fresh = CALENDAR_EVENTS.base_payload(start, end, "ok")
         fresh["dates"]["2026-08-24"].update(state="partial", complete=False)
         fresh["dates"]["2026-08-25"]["updatedAt"] = 200
         result = CALENDAR_EVENTS.merge_month(fresh, cached)
@@ -237,18 +288,20 @@ class CalendarEventsTest(unittest.TestCase):
             path = Path(directory) / "cache.json"
             CALENDAR_EVENTS.store_view(good, path)
             with patch.object(CALENDAR_EVENTS, "run_bounded_worker", return_value=None):
-                result = CALENDAR_EVENTS.refreshed_view("month", start, end, path)
+                result = CALENDAR_EVENTS.refreshed_view(start, end, path)
             self.assertEqual(len(result["events"]), 1)
             self.assertEqual(result["dates"]["2026-08-24"]["events"], [0])
             self.assertEqual(result["state"], "partial")
-            recovered = CALENDAR_EVENTS.cached_view("month", start, end, path)
+            recovered = CALENDAR_EVENTS.cached_view(start, end, path)
             self.assertEqual(recovered["dates"], result["dates"])
             self.assertTrue(CALENDAR_EVENTS.valid_payload(recovered))
 
     def test_cancelled_occurrences_still_have_a_work_budget(self):
-        events, error = self.fetch(200000, cancelled=True)
-        self.assertEqual(events, [])
-        self.assertEqual(error, "limited")
+        month, error = self.fetch(200000, cancelled=True)
+        self.assertEqual(month["events"], [])
+        self.assertEqual(month["state"], "partial")
+        self.assertFalse(month["complete"])
+        self.assertEqual(error, "")
         self.assertEqual(self.visited, CALENDAR_EVENTS.MAX_OCCURRENCES + 1)
 
     def test_spanning_and_exclusive_all_day_end(self):
@@ -258,7 +311,11 @@ class CalendarEventsTest(unittest.TestCase):
 
     def test_dst_day_uses_next_local_midnight(self):
         zone = ZoneInfo("Europe/Oslo")
-        event = self.event(allDay=False, start=int(datetime(2026, 3, 30, 0, 30, tzinfo=zone).timestamp()), end=int(datetime(2026, 3, 30, 1, tzinfo=zone).timestamp()))
+        event = self.event(
+            allDay=False,
+            start=int(datetime(2026, 3, 30, 0, 30, tzinfo=zone).timestamp()),
+            end=int(datetime(2026, 3, 30, 1, tzinfo=zone).timestamp()),
+        )
         self.assertFalse(CALENDAR_EVENTS.overlaps(event, date(2026, 3, 29), zone))
         self.assertTrue(CALENDAR_EVENTS.overlaps(event, date(2026, 3, 30), zone))
         instant = self.event(allDay=False, start=int(datetime(2026, 10, 25, 23, 30, tzinfo=zone).timestamp()), end=0)
@@ -267,10 +324,9 @@ class CalendarEventsTest(unittest.TestCase):
     def test_cache_round_trip_and_partial_keeps_completeness(self):
         with TemporaryDirectory() as directory:
             path = Path(directory) / "agenda.json"
-            payload = self.payload("partial")
-            payload["events"] = [self.event()]
+            payload = self.payload("partial", events=[self.event()])
             self.assertTrue(CALENDAR_EVENTS.store_view(payload, path))
-            cached = CALENDAR_EVENTS.cached_view("day", date(2026, 8, 24), date(2026, 8, 25), path)
+            cached = CALENDAR_EVENTS.cached_view(date(2026, 8, 24), date(2026, 10, 5), path)
             self.assertEqual(cached["state"], "partial")
             self.assertTrue(cached["cached"])
             self.assertFalse(cached["complete"])
@@ -280,45 +336,59 @@ class CalendarEventsTest(unittest.TestCase):
     def test_failed_refresh_preserves_good_data_and_persists_warning(self):
         with TemporaryDirectory() as directory:
             path = Path(directory) / "agenda.json"
-            good = self.payload()
-            good["events"] = [self.event()]
+            good = self.payload(events=[self.event()])
             CALENDAR_EVENTS.store_view(good, path)
+            start, end = date(2026, 8, 24), date(2026, 10, 5)
             for fresh in (None, self.payload("partial")):
                 with patch.object(CALENDAR_EVENTS, "run_bounded_worker", return_value=fresh):
-                    result = CALENDAR_EVENTS.refreshed_view("day", date(2026, 8, 24), date(2026, 8, 25), path)
+                    result = CALENDAR_EVENTS.refreshed_view(start, end, path)
                 self.assertEqual(result["events"], good["events"])
+                self.assertEqual(result["dates"]["2026-08-24"]["events"], [0])
                 self.assertEqual(result["state"], "partial")
-                self.assertTrue(result["cached"])
+                self.assertTrue(all(day["cached"] and day["complete"] for day in result["dates"].values()))
                 self.assertTrue(result["complete"])
-                cached = CALENDAR_EVENTS.cached_view("day", date(2026, 8, 24), date(2026, 8, 25), path)
+                cached = CALENDAR_EVENTS.cached_view(start, end, path)
                 self.assertEqual(cached["state"], "partial")
             with patch.object(CALENDAR_EVENTS, "run_bounded_worker", return_value=good):
-                recovered = CALENDAR_EVENTS.refreshed_view("day", date(2026, 8, 24), date(2026, 8, 25), path)
+                recovered = CALENDAR_EVENTS.refreshed_view(start, end, path)
             self.assertEqual(recovered["state"], "ok")
-            self.assertFalse(recovered["cached"])
+            self.assertFalse(any(day["cached"] for day in recovered["dates"].values()))
 
     def test_cache_rejects_oversized_corrupt_and_old_files(self):
         with TemporaryDirectory() as directory:
             path = Path(directory) / "agenda.json"
-            for raw in (b" " * (CALENDAR_EVENTS.MAX_CACHE_BYTES + 1), b'{"version":1,"dates":{}}', b"[", b"null", b"[" * 2000):
+            for raw in (
+                b" " * (CALENDAR_EVENTS.MAX_CACHE_BYTES + 1),
+                b'{"version":1,"dates":{}}',
+                b"[",
+                b"null",
+                b"[" * 2000,
+            ):
                 path.write_bytes(raw)
                 self.assertEqual(CALENDAR_EVENTS.read_cache(path)["views"], {})
 
     def test_cache_evicts_by_bytes_and_entry_count(self):
         with TemporaryDirectory() as directory:
             path = Path(directory) / "agenda.json"
-            for offset in range(70):
-                payload = self.payload(start=date(2026, 1, 1) + timedelta(days=offset))
-                payload["events"] = [self.event(title="🙂" * 256) for _ in range(100)]
+            for offset in range(20):
+                payload = self.payload(
+                    start=date(2026, 1, 1) + timedelta(days=offset),
+                    events=[self.event(id=f"e{i}", title="🙂" * 256) for i in range(100)],
+                )
                 CALENDAR_EVENTS.store_view(payload, path)
                 self.assertLessEqual(path.stat().st_size, CALENDAR_EVENTS.MAX_CACHE_BYTES)
             views = CALENDAR_EVENTS.read_cache(path)["views"]
             self.assertLessEqual(len(views), CALENDAR_EVENTS.MAX_CACHE_ENTRIES)
-            self.assertNotIn("day:2026-01-01:2026-01-02", views)
+            self.assertNotIn("month:2026-01-01:2026-02-12", views)
             self.assertEqual(list(views.values())[-1]["date"], payload["date"])
 
     def test_worker_reader_rejects_flood_without_newline_stderr_and_timeout(self):
-        scripts = ["import os; os.write(1, b'x' * 1048576)", "import os; os.write(2, b'x' * 1048576); os.write(1, b'{}')", "import time; time.sleep(10)", "print('[' * 2000)"]
+        scripts = [
+            "import os; os.write(1, b'x' * 1048576)",
+            "import os; os.write(2, b'x' * 1048576); os.write(1, b'{}')",
+            "import time; time.sleep(10)",
+            "print('[' * 2000)",
+        ]
         for script in scripts:
             started = time.monotonic()
             result = CALENDAR_EVENTS.run_bounded_worker([sys.executable, "-c", script], timeout=0.2)
@@ -331,7 +401,11 @@ class CalendarEventsTest(unittest.TestCase):
         self.assertEqual(result, payload)
 
     def test_worker_reader_rejects_malformed_schema(self):
-        for mutate in (lambda p: p.update(events=[{}]), lambda p: p.update(updatedAt="now"), lambda p: p.update(events=[self.event(title="x" * 257)])):
+        for mutate in (
+            lambda p: p.update(events=[{}]),
+            lambda p: p.update(updatedAt="now"),
+            lambda p: p.update(events=[self.event(title="x" * 257)]),
+        ):
             payload = self.payload()
             mutate(payload)
             self.assertFalse(CALENDAR_EVENTS.valid_payload(payload))
@@ -339,20 +413,33 @@ class CalendarEventsTest(unittest.TestCase):
     def test_missing_cache_and_failed_live_view_stay_unavailable(self):
         with TemporaryDirectory() as directory:
             with patch.object(CALENDAR_EVENTS, "run_bounded_worker", return_value=None):
-                result = CALENDAR_EVENTS.refreshed_view("day", date(2026, 8, 24), date(2026, 8, 25), Path(directory) / "cache.json")
+                result = CALENDAR_EVENTS.refreshed_view(
+                    date(2026, 8, 24), date(2026, 10, 5), Path(directory) / "cache.json"
+                )
         self.assertEqual(result["state"], "error")
         self.assertFalse(result["complete"])
 
     def test_fresh_cached_navigation_does_not_start_a_worker(self):
         import os
+
         payload = self.payload()
         payload["updatedAt"] = int(time.time())
         with TemporaryDirectory() as directory:
             path = Path(directory) / "foamy-clock" / "agenda-v3.json"
             CALENDAR_EVENTS.store_view(payload, path)
-            with patch.dict(os.environ, {"XDG_CACHE_HOME": directory}), patch.object(sys, "argv", [str(MODULE_PATH), "--date", "2026-08-24", "--max-age", "1800"]), patch.object(CALENDAR_EVENTS, "run_bounded_worker", side_effect=AssertionError("unnecessary worker")), patch("builtins.print") as output:
+            with (
+                patch.dict(os.environ, {"XDG_CACHE_HOME": directory}),
+                patch.object(
+                    sys,
+                    "argv",
+                    [str(MODULE_PATH), "--range-start", "2026-08-24", "--range-end", "2026-10-05", "--max-age", "1800"],
+                ),
+                patch.object(CALENDAR_EVENTS, "run_bounded_worker", side_effect=AssertionError("unnecessary worker")),
+                patch("builtins.print") as output,
+            ):
                 self.assertEqual(CALENDAR_EVENTS.main(), 0)
-            result = json.loads(output.call_args.args[0])
+            result = json.loads(output.call_args_list[0].args[0])
+            self.assertEqual(result["kind"], "month-start")
             self.assertTrue(result["cached"])
             self.assertEqual(result["state"], "ok")
 
@@ -366,27 +453,48 @@ class CalendarEventsTest(unittest.TestCase):
 
     def test_source_count_concurrency_and_merged_events_are_bounded(self):
         import threading
+
         extension = SimpleNamespace(get_selected=lambda: True, get_color=lambda: "")
-        sources = [SimpleNamespace(get_enabled=lambda: True, get_extension=lambda _: extension, get_display_name=lambda: "Work") for _ in range(40)]
+        sources = [
+            SimpleNamespace(
+                get_enabled=lambda: True, get_extension=lambda _: extension, get_display_name=lambda: "Work"
+            )
+            for _ in range(40)
+        ]
         registry = SimpleNamespace(list_sources=lambda _: sources)
-        data_server = SimpleNamespace(SourceRegistry=SimpleNamespace(new_sync=lambda _: registry), SOURCE_EXTENSION_CALENDAR="calendar")
+        data_server = SimpleNamespace(
+            SourceRegistry=SimpleNamespace(new_sync=lambda _: registry), SOURCE_EXTENSION_CALENDAR="calendar"
+        )
         repository = SimpleNamespace(ECal=object(), EDataServer=data_server, ICalGLib=object())
         active = peak = calls = 0
         lock = threading.Lock()
+
         def fetch(*_args):
             nonlocal active, peak, calls
             with lock:
                 active += 1
                 calls += 1
                 peak = max(peak, active)
+                call = calls
             time.sleep(0.002)
             with lock:
                 active -= 1
-            return [self.event() for _ in range(100)], ""
-        with patch.dict(sys.modules, {"gi": SimpleNamespace(require_version=lambda *_: None), "gi.repository": repository}), patch.object(CALENDAR_EVENTS, "fetch_source_events", side_effect=fetch):
-            result = CALENDAR_EVENTS.load_view("day", date(2026, 8, 24), date(2026, 8, 25))
+            # Every source fills the day with its own 100 events.
+            month = CALENDAR_EVENTS.MonthBuilder(date(2026, 8, 24), date(2026, 8, 25))
+            for i in range(100):
+                month.add(self.event(id=f"source-{call}:{i}"), ["2026-08-24"])
+            return month.finish(), ""
+
+        with (
+            patch.dict(
+                sys.modules, {"gi": SimpleNamespace(require_version=lambda *_: None), "gi.repository": repository}
+            ),
+            patch.object(CALENDAR_EVENTS, "fetch_source_events", side_effect=fetch),
+        ):
+            result = CALENDAR_EVENTS.load_view(date(2026, 8, 24), date(2026, 8, 25))
         self.assertEqual(calls, 32)
         self.assertLessEqual(peak, 2)
+        self.assertEqual(len(result["dates"]["2026-08-24"]["events"]), 100)
         self.assertEqual(len(result["events"]), 100)
         self.assertEqual(result["state"], "partial")
         self.assertFalse(result["complete"])
@@ -397,7 +505,7 @@ class CalendarEventsTest(unittest.TestCase):
             "s=importlib.util.spec_from_file_location('calendar_events', " + repr(str(MODULE_PATH)) + "); "
             "m=importlib.util.module_from_spec(s); s.loader.exec_module(m); "
             "m.load_view=lambda *_: bytearray(1024**3); "
-            "sys.argv=['calendar-events.py','--worker','day','--date','2026-08-24','--range-end','2026-08-25']; "
+            "sys.argv=['calendar-events.py','--worker','--range-start','2026-08-24','--range-end','2026-08-25']; "
             "m.main()"
         )
         result = CALENDAR_EVENTS.run_bounded_worker([sys.executable, "-c", script])
@@ -408,34 +516,97 @@ class CalendarEventsTest(unittest.TestCase):
     def test_cached_cli_emits_atomic_month_transaction(self):
         with TemporaryDirectory() as directory:
             import os
-            output = subprocess.check_output([sys.executable, str(MODULE_PATH), "--cached", "--date", "2026-08-24", "--range-start", "2026-08-01", "--range-end", "2026-09-12"], env={**os.environ, "XDG_CACHE_HOME": directory})
+
+            output = subprocess.check_output(
+                [
+                    sys.executable,
+                    str(MODULE_PATH),
+                    "--cached",
+                    "--range-start",
+                    "2026-08-01",
+                    "--range-end",
+                    "2026-09-12",
+                ],
+                env={**os.environ, "XDG_CACHE_HOME": directory},
+            )
             lines = [json.loads(line) for line in output.splitlines()]
             self.assertEqual([item["kind"] for item in lines], ["month-start", "month-end"])
             self.assertEqual(len(lines[0]["dates"]), 42)
             self.assertEqual(lines[0]["state"], "missing")
 
+    def test_cli_serves_month_ranges_only(self):
+        """The shell always asks for a range; the one-day view (--date) is gone."""
+        import os
+
+        with TemporaryDirectory() as directory:
+            env = {**os.environ, "XDG_CACHE_HOME": directory}
+            for arguments in (
+                ["--cached"],
+                ["--cached", "--date", "2026-08-24"],
+                ["--cached", "--range-start", "2026-08-01"],
+            ):
+                result = subprocess.run(
+                    [sys.executable, str(MODULE_PATH), *arguments], env=env, capture_output=True, text=True
+                )
+                self.assertEqual(result.returncode, 2, arguments)
+                self.assertEqual(result.stdout, "", arguments)
+        day = self.payload()
+        day.update(kind="day", rangeEnd="2026-08-25", dates={})
+        self.assertFalse(CALENDAR_EVENTS.valid_payload(day))
+
     def test_cache_only_refresh_persists_without_shell_output(self):
         start = date(2026, 8, 24)
-        month = self.payload(kind="month", start=start)
-        month["events"] = [self.event()]
-        month["dates"][start.isoformat()]["events"] = [0]
+        month = self.payload(start=start, events=[self.event()])
         with TemporaryDirectory() as directory:
             path = Path(directory) / "agenda.json"
-            with patch.object(sys, "argv", ["calendar-events.py", "--cache-only", "--range-start", str(start), "--range-end", str(start + timedelta(days=42))]), patch.object(CALENDAR_EVENTS, "default_cache_path", return_value=path), patch.object(CALENDAR_EVENTS, "run_bounded_worker", return_value=month) as worker, patch.object(CALENDAR_EVENTS, "emit_view") as output:
+            with (
+                patch.object(
+                    sys,
+                    "argv",
+                    [
+                        "calendar-events.py",
+                        "--cache-only",
+                        "--range-start",
+                        str(start),
+                        "--range-end",
+                        str(start + timedelta(days=42)),
+                    ],
+                ),
+                patch.object(CALENDAR_EVENTS, "default_cache_path", return_value=path),
+                patch.object(CALENDAR_EVENTS, "run_bounded_worker", return_value=month) as worker,
+                patch.object(CALENDAR_EVENTS, "emit_view") as output,
+            ):
                 self.assertEqual(CALENDAR_EVENTS.main(), 0)
                 worker.assert_called_once()
                 output.assert_not_called()
-            cached = CALENDAR_EVENTS.cached_view("month", start, start + timedelta(days=42), path)
+            cached = CALENDAR_EVENTS.cached_view(start, start + timedelta(days=42), path)
             self.assertEqual(cached["events"], month["events"])
             self.assertEqual(cached["state"], "ok")
 
             # A restart reuses fresh prefetched data without an Exchange query.
             cached["updatedAt"] = int(time.time())
             CALENDAR_EVENTS.store_view(cached, path)
-            with patch.object(sys, "argv", ["calendar-events.py", "--cache-only", "--max-age", "1800", "--range-start", str(start), "--range-end", str(start + timedelta(days=42))]), patch.object(CALENDAR_EVENTS, "default_cache_path", return_value=path), patch.object(CALENDAR_EVENTS, "run_bounded_worker", side_effect=AssertionError("unnecessary worker")), patch.object(CALENDAR_EVENTS, "emit_view") as output:
+            with (
+                patch.object(
+                    sys,
+                    "argv",
+                    [
+                        "calendar-events.py",
+                        "--cache-only",
+                        "--max-age",
+                        "1800",
+                        "--range-start",
+                        str(start),
+                        "--range-end",
+                        str(start + timedelta(days=42)),
+                    ],
+                ),
+                patch.object(CALENDAR_EVENTS, "default_cache_path", return_value=path),
+                patch.object(CALENDAR_EVENTS, "run_bounded_worker", side_effect=AssertionError("unnecessary worker")),
+                patch.object(CALENDAR_EVENTS, "emit_view") as output,
+            ):
                 self.assertEqual(CALENDAR_EVENTS.main(), 0)
                 output.assert_not_called()
-
 
     def test_floating_times_use_the_local_default_timezone(self):
         """EDS resolves floating DATE-TIMEs with the client default zone (UTC unless set)."""
@@ -443,25 +614,42 @@ class CalendarEventsTest(unittest.TestCase):
         calls = []
 
         class Occurrence:
-            def __init__(self, hour): self.hour = hour
-            def is_date(self): return False
-            def get_timezone(self): return None  # floating: no TZID, no Z
+            def __init__(self, hour):
+                self.hour = hour
+
+            def is_date(self):
+                return False
+
+            def get_timezone(self):
+                return None  # floating: no TZID, no Z
+
             def as_timet_with_zone(self, zone):
                 # 09:00 floating is 08:00 UTC in Oslo (CET), 09:00 UTC in UTC.
                 offset = 3600 if zone is oslo else 0
                 return int(datetime(2026, 10, 30, self.hour, tzinfo=timezone.utc).timestamp()) - offset
 
-        component = SimpleNamespace(get_status=lambda: "ok", get_summary=lambda: "Standup", get_location=lambda: "", get_uid=lambda: "floating")
-        client = SimpleNamespace(set_default_timezone=lambda zone: calls.append(zone),
-                                 get_default_timezone=lambda: calls[-1] if calls else "utc",
-                                 generate_instances_sync=lambda _s, _e, _c, callback, _d: callback(component, Occurrence(9), Occurrence(10), None, None))
-        ecal = SimpleNamespace(Client=SimpleNamespace(connect_sync=lambda *_: client), ClientSourceType=SimpleNamespace(EVENTS=1))
+        component = SimpleNamespace(
+            get_status=lambda: "ok", get_summary=lambda: "Standup", get_location=lambda: "", get_uid=lambda: "floating"
+        )
+        client = SimpleNamespace(
+            set_default_timezone=lambda zone: calls.append(zone),
+            get_default_timezone=lambda: calls[-1] if calls else "utc",
+            generate_instances_sync=lambda _s, _e, _c, callback, _d: callback(
+                component, Occurrence(9), Occurrence(10), None, None
+            ),
+        )
+        ecal = SimpleNamespace(
+            Client=SimpleNamespace(connect_sync=lambda *_: client), ClientSourceType=SimpleNamespace(EVENTS=1)
+        )
         ical = SimpleNamespace(PropertyStatus=SimpleNamespace(CANCELLED="cancelled"))
         start = datetime(2026, 10, 30, tzinfo=ZoneInfo("Europe/Oslo"))
-        events, error = CALENDAR_EVENTS.fetch_source_events(SimpleNamespace(get_uid=lambda: "calendar"), "Work", "", start, start + timedelta(days=1), ecal, ical, "day", oslo)
+        month, error = CALENDAR_EVENTS.fetch_source_events(
+            SimpleNamespace(get_uid=lambda: "calendar"), "Work", "", start, start + timedelta(days=1), ecal, ical, oslo
+        )
         self.assertEqual(error, "")
         self.assertEqual(calls, [oslo])
-        self.assertEqual(datetime.fromtimestamp(events[0]["start"], ZoneInfo("Europe/Oslo")).hour, 9)
+        self.assertEqual(month["dates"]["2026-10-30"]["events"], [0])
+        self.assertEqual(datetime.fromtimestamp(month["events"][0]["start"], ZoneInfo("Europe/Oslo")).hour, 9)
 
     def test_ical_timezone_maps_iana_keys_only(self):
         lookups = []
@@ -473,6 +661,7 @@ class CalendarEventsTest(unittest.TestCase):
     def test_real_libical_floating_time_follows_local_zone(self):
         try:
             import gi
+
             gi.require_version("ICalGLib", "4.0")
             from gi.repository import ICalGLib
         except (ImportError, ValueError):
@@ -486,13 +675,25 @@ class CalendarEventsTest(unittest.TestCase):
         oslo = Path("/usr/share/zoneinfo/Europe/Oslo")
         if not oslo.exists():
             self.skipTest("zoneinfo not installed")
-        cases = {":Europe/Oslo": "Europe/Oslo", "Europe/Oslo": "Europe/Oslo",
-                 ":" + str(oslo): "Europe/Oslo", str(oslo): "Europe/Oslo"}
+        cases = {
+            ":Europe/Oslo": "Europe/Oslo",
+            "Europe/Oslo": "Europe/Oslo",
+            ":" + str(oslo): "Europe/Oslo",
+            str(oslo): "Europe/Oslo",
+        }
         for value, key in cases.items():
             with patch.dict("os.environ", {"TZ": value}):
                 self.assertEqual(CALENDAR_EVENTS.local_timezone().key, key, value)
-        localtime = CALENDAR_EVENTS.zone_from_file(Path("/etc/localtime")).key if Path("/etc/localtime").exists() else "UTC"
-        for value in (":/etc/localtime", "/etc/localtime", "Not/AZone", "CET-1CEST,M3.5.0,M10.5.0/3", ":/nonexistent/zone"):
+        localtime = (
+            CALENDAR_EVENTS.zone_from_file(Path("/etc/localtime")).key if Path("/etc/localtime").exists() else "UTC"
+        )
+        for value in (
+            ":/etc/localtime",
+            "/etc/localtime",
+            "Not/AZone",
+            "CET-1CEST,M3.5.0,M10.5.0/3",
+            ":/nonexistent/zone",
+        ):
             with patch.dict("os.environ", {"TZ": value}):
                 zone = CALENDAR_EVENTS.local_timezone()
                 # Unusable values fall back to /etc/localtime instead of raising.
@@ -510,21 +711,21 @@ class CalendarEventsTest(unittest.TestCase):
             CALENDAR_EVENTS.store_view(newer, path)
             stamp = path.stat().st_mtime_ns
             # Already most recent: no write at all.
-            self.assertFalse(CALENDAR_EVENTS.touch_view("day", date(2026, 8, 25), date(2026, 8, 26), path))
+            self.assertFalse(CALENDAR_EVENTS.touch_view(date(2026, 8, 25), date(2026, 10, 6), path))
             self.assertEqual(path.stat().st_mtime_ns, stamp)
             # Another bridge stores fresh data for the older key; a touch keeps it.
-            fresh = self.payload(start=date(2026, 8, 24))
-            fresh["events"] = [self.event()]
+            fresh = self.payload(start=date(2026, 8, 24), events=[self.event()])
             fresh["updatedAt"] = 999999
             CALENDAR_EVENTS.store_view(fresh, path)
-            CALENDAR_EVENTS.touch_view("day", date(2026, 8, 25), date(2026, 8, 26), path)
+            CALENDAR_EVENTS.touch_view(date(2026, 8, 25), date(2026, 10, 6), path)
             views = CALENDAR_EVENTS.read_cache(path)["views"]
-            self.assertEqual(views["day:2026-08-24:2026-08-25"]["updatedAt"], 999999)
-            self.assertEqual(list(views)[-1], "day:2026-08-25:2026-08-26")
+            self.assertEqual(views["month:2026-08-24:2026-10-05"]["updatedAt"], 999999)
+            self.assertEqual(list(views)[-1], "month:2026-08-25:2026-10-06")
 
     def test_cache_writes_wait_for_the_lock_and_give_up_when_held(self):
         import fcntl
         import os
+
         with TemporaryDirectory() as directory:
             path = Path(directory) / "agenda.json"
             path.parent.mkdir(exist_ok=True)
@@ -547,7 +748,10 @@ class CalendarEventsTest(unittest.TestCase):
                 (folder / name).write_text("{}")
             path = folder / f"agenda-v{CALENDAR_EVENTS.CACHE_VERSION}.json"
             self.assertTrue(CALENDAR_EVENTS.store_view(self.payload(), path))
-            self.assertEqual(sorted(p.name for p in folder.iterdir() if not p.name.startswith(".")), ["agenda-v3.json", "notes.json"])
+            self.assertEqual(
+                sorted(p.name for p in folder.iterdir() if not p.name.startswith(".")), ["agenda-v3.json", "notes.json"]
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

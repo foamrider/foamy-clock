@@ -3,13 +3,14 @@
 
 Uses the foamy-kit preview harness (temp HOME/XDG, no Wayland/Hyprland,
 software renderer; 4.5 QML is loaded, never its scripts). The session bus is
-pointed at a dead address so the agenda worker cannot reach a live EDS.
-Usage: tests/runtime.py [--host 4.5|4.0|both] [--language en|no]
+the harness's private bus, which has no service files, so the agenda worker
+can neither reach nor activate a live EDS.
+Usage: tests/runtime.py [--language en|no]
 
 The 4.5 host is FOAMY_HOST_45, else $OMARCHY_TEST_ROOT/shell, else the
-installed /usr/share/omarchy/shell (the default --host). 4.0 runs only when
-FOAMY_HOST_40 names a 4.0 shell; otherwise --host 4.0/both print SKIP for it.
+installed /usr/share/omarchy/shell.
 """
+
 import argparse
 import os
 import sys
@@ -24,34 +25,40 @@ if not os.environ.get("FOAMY_HOST_45"):
 sys.path.insert(0, str(KIT / "preview"))
 import harness  # noqa: E402
 
+# The calendar shortcut's host commands: only "foamy-test-calendar" is
+# installed, and a launch is recorded in the run's out directory instead.
+FAKEBIN = {
+    "omarchy-cmd-present": '#!/bin/sh\n[ "$#" -eq 1 ] && [ "$1" = foamy-test-calendar ]\n',
+    "omarchy-launch-or-focus": '#!/bin/sh\nprintf "%s\\n" "$*" >>"$FOAMY_OUT/launched"\n',
+}
+
 
 def run(host, language):
     shell = (Path(__file__).parent / "runtime/Runtime.qml").read_text()
-    test = harness.Run(host, shell, plugin=ROOT, language=language, prefix="foamy-clock-runtime-")
+    test = harness.Run(host, shell, plugin=ROOT, language=language, prefix="foamy-clock-runtime-", fakebin=FAKEBIN)
     test.env["FOAMY_LANG"] = language
-    test.env["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=" + str(test.base / "no-bus")
     test.run(timeout=30)
     result = [line for line in test.log.splitlines() if "FOAMY RESULT" in line]
-    print(f"{'PASS' if test.ok else 'FAIL'} {host}/{language} {result[-1].split('RESULT ')[-1] if result else ''}")
+    # Every host command the widget runs here has a FAKEBIN stand-in; the
+    # harness stubs any other omarchy* command and logs it.
+    unfaked = test.host_commands()
+    ok = test.ok and not unfaked
+    print(f"{'PASS' if ok else 'FAIL'} {host}/{language} {result[-1].split('RESULT ')[-1] if result else ''}")
+    if unfaked:
+        print("host commands without a fake: " + "; ".join(unfaked))
     if not test.ok:
         print("\n".join(test.failures() or test.log.splitlines()[-30:]))
     test.cleanup()
-    return test.ok
+    return ok
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--host", default="4.5", choices=("4.5", "4.0", "both"))
-    parser.add_argument("--language", default=None)
+    parser.add_argument("--language", default=None, choices=("en", "no"))
     args = parser.parse_args()
-    hosts = ["4.5", "4.0"] if args.host == "both" else [args.host]
-    if "4.0" in hosts and not os.environ.get("FOAMY_HOST_40"):
-        print("SKIP 4.0: set FOAMY_HOST_40 to an Omarchy 4.0 shell to run it")
-        hosts.remove("4.0")
     ok = True
-    for host in hosts:
-        for language in ([args.language] if args.language else (["en", "no"] if host == "4.5" else ["en"])):
-            ok &= run(host, language)
+    for language in [args.language] if args.language else ["en", "no"]:
+        ok &= run("4.5", language)
     return 0 if ok else 1
 
 
