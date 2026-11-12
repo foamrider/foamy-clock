@@ -58,9 +58,23 @@ ShellRoot {
   function widget(i) { return bars.itemAt(i).widget }
   function panel(i) { return widget(i).children.filter(c => c.popup !== undefined)[0] }
 
-  Timer {
-    interval: 1500; running: true
-    onTriggered: {
+  // Each step waits for its own condition (10 s at most) instead of a fixed
+  // delay, so a loaded machine slows the test down instead of failing it.
+  FoamyWait { id: wait }
+  function step(condition, label, then) {
+    wait.waitFor(condition, 10000, function(ok) {
+      check(ok, label)
+      if (ok) then()
+      else shell.finish()
+    })
+  }
+  // Start: the three bars and the leader's settings are in. The absence of
+  // early processes is then watched over a fixed window, because the bug it
+  // guards against started a worker during shell start, not on any event.
+  Component.onCompleted: step(function() {
+    return bars.count === 3 && bars.itemAt(2) !== null && Clock.ClockService.refreshMinutes === 45
+  }, "the bars and the leader's settings load", function() { wait.after(1500, startCheck) })
+  function startCheck() {
       var service = Clock.ClockService
       eq(service.activated, false, "service idle before any popup opens")
       eq(service.agendaProcess.running || service.cacheProcess.running, false, "no Evolution or cache process before open")
@@ -86,13 +100,9 @@ ShellRoot {
       eq(widget(0).clockIcon.codePointAt(0), 0xf017, "clock glyph code point")
       eq(widget(0).calendarIcon.codePointAt(0), 0xf0e17, "calendar glyph code point")
       widget(1).open()
-      openCheck.start()
-    }
+      step(function() { return widget(1).opened && panel(1).popup.bodyItem !== null }, "bar 1 opens and builds its body", openCheck)
   }
-  Timer {
-    id: openCheck
-    interval: 1500
-    onTriggered: {
+  function openCheck() {
       var service = Clock.ClockService
       eq(widget(1).opened, true, "bar 1 opened")
       eq(service.activated, true, "first open activates the agenda")
@@ -123,19 +133,15 @@ ShellRoot {
       bound.select("b")
       shell.boundSetting = "c"
       eq(bound.value, "c", "dropdown follows the stored setting after a selection")
-      if (lang === "no" && host === "4.5") {
+      if (lang === "no") {
         eq(Clock.ClockService !== null, true, "service")
         check(view.heroDateText.indexOf(".") > 0, "Norwegian hero date uses the catalog pattern: " + view.heroDateText)
         eq(view.updatedAgoText !== undefined, true, "updated text")
       }
       widget(1).close()
-      closeCheck.start()
-    }
+      step(function() { return !Clock.ClockService.demanded }, "closing bar 1 drops demand", closeCheck)
   }
-  Timer {
-    id: closeCheck
-    interval: 600
-    onTriggered: {
+  function closeCheck() {
       var service = Clock.ClockService
       eq(service.demanded, false, "closing drops demand")
       eq(service.clock.enabled, false, "the clock stops again when hidden")
@@ -148,8 +154,7 @@ ShellRoot {
       // A calendar app Omarchy cannot find: an error, nothing launched.
       widget(0).save("calendarApp", "foamy-missing-calendar")
       panel(0).openCalendar()
-      launchCheck.start()
-    }
+      step(function() { return panel(0).launchError !== "" }, "a missing calendar app reports an error", missingCalendar)
   }
   FileView { id: launchedFile; path: Quickshell.env("FOAMY_OUT") + "/launched"; blockLoading: true; printErrors: false }
   function launched() { launchedFile.reload(); return launchedFile.text() }
@@ -158,30 +163,17 @@ ShellRoot {
     console.log(failures === 0 ? "FOAMY DONE" : "FOAMY FAIL total")
     Qt.quit()
   }
-  // Polls instead of fixed sleeps: each step waits (10 s at most) for the
-  // launch check's own outcome.
-  Timer {
-    id: launchCheck
-    interval: 100; repeat: true
-    property int step: 0
-    property int ticks: 0
-    onTriggered: {
-      if (++ticks > 100) { check(false, "calendar launch step " + step + " timed out"); stop(); shell.finish(); return }
-      if (step === 0) {
-        if (panel(0).launchError === "") return
-        check(shell.launched() === "", "missing calendar app: nothing launched")
-        widget(0).save("calendarApp", "foamy-test-calendar")
-        widget(0).open()
-        panel(0).openCalendar()
-        step = 1; ticks = 0
-        return
-      }
-      if (shell.launched() === "") return
-      eq(shell.launched(), "foamy-test-calendar\n", "calendar app present: launched through omarchy-launch-or-focus")
-      eq(widget(0).opened, false, "and the popup closes")
-      eq(panel(0).launchError, "", "with no error")
-      stop()
-      shell.finish()
-    }
+  function missingCalendar() {
+    check(shell.launched() === "", "missing calendar app: nothing launched")
+    widget(0).save("calendarApp", "foamy-test-calendar")
+    widget(0).open()
+    panel(0).openCalendar()
+    step(function() { return shell.launched() !== "" }, "a present calendar app is launched", presentCalendar)
+  }
+  function presentCalendar() {
+    eq(shell.launched(), "foamy-test-calendar\n", "calendar app present: launched through omarchy-launch-or-focus")
+    eq(widget(0).opened, false, "and the popup closes")
+    eq(panel(0).launchError, "", "with no error")
+    shell.finish()
   }
 }

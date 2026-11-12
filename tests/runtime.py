@@ -38,11 +38,17 @@ def run(host, language):
     test.env["FOAMY_LANG"] = language
     test.run(timeout=30)
     result = [line for line in test.log.splitlines() if "FOAMY RESULT" in line]
-    print(f"{'PASS' if test.ok else 'FAIL'} {host}/{language} {result[-1].split('RESULT ')[-1] if result else ''}")
+    # Every host command the widget runs here has a FAKEBIN stand-in; the
+    # harness stubs any other omarchy* command and logs it.
+    unfaked = test.host_commands()
+    ok = test.ok and not unfaked
+    print(f"{'PASS' if ok else 'FAIL'} {host}/{language} {result[-1].split('RESULT ')[-1] if result else ''}")
+    if unfaked:
+        print("host commands without a fake: " + "; ".join(unfaked))
     if not test.ok:
         print("\n".join(test.failures() or test.log.splitlines()[-30:]))
     test.cleanup()
-    return test.ok
+    return ok
 
 
 def main():
