@@ -162,9 +162,6 @@ SettingsPane.qml: unqualified: Unqualified access | presets: root.formatOptions(
 SettingsPane.qml: unqualified: Unqualified access | readonly property var value: root.current(key)
 SettingsPane.qml: unqualified: Unqualified access | root.save(field.key, next)
 SettingsPane.qml: unqualified: Unqualified access | root.save(field.key, next)
-preview/Preview.qml: id-shadows-member: Id for object FoamyPopup shadows property "popup". Rename one or the other. | readonly property Item popup: popup
-preview/Preview.qml: id-shadows-member: Note: Id defined here | id: popup
-preview/Preview.qml: incompatible-type: Cannot assign binding of type FoamyPopup to QQuickItem | readonly property Item popup: popup
 preview/Preview.qml: unqualified: Unqualified access | availableHeight: popup.availableCardHeight
 preview/Preview.qml: unqualified: Unqualified access | editingSettings: preview.previewState.indexOf("settings") === 0
 preview/Preview.qml: unqualified: Unqualified access | settingsError: preview.previewState === "settings-error" ? "Couldn't save the setting." : ""

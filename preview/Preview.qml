@@ -11,7 +11,7 @@ Item {
   property var previewStates: ["agenda", "empty", "error", "settings", "settings-error"]
   property string previewState: "agenda"
   property int settleMs: 700
-  readonly property Item popup: popup
+  readonly property var popup: previewPopup
 
   readonly property var service: Clock.ClockService
   function at(hour, minute) {
@@ -98,7 +98,7 @@ Item {
   Component.onCompleted: apply()
 
   FoamyPopup {
-    id: popup
+    id: previewPopup
     anchorItem: preview.anchorItem
     bar: preview.bar
     open: true
@@ -106,6 +106,7 @@ Item {
     maxHeight: 0
     body: Component {
       Clock.ClockView {
+        // `popup` is the root's property (previewPopup): no id is named popup.
         settings: ({})
         availableHeight: popup.availableCardHeight
         verticalInset: popup.verticalContentInset
