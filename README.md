@@ -147,7 +147,7 @@ for t in tests/*-test.js tests/i18n.test.cjs; do node "$t"; done
 python3 -I -m unittest discover -s tests -p 'test_*.py'
 bash tests/kit-check.sh
 python3 tests/runtime.py                 # offscreen on the installed 4.5 shell; needs ../foamy-kit (FOAMY_KIT)
-python3 tests/i18n-runtime.py
+python3 "${FOAMY_KIT:-../foamy-kit}/preview/i18n_runtime.py" .   # the catalogs in a live shell
 ```
 
 The runtime test uses the installed 4.5 shell unless `FOAMY_HOST_45` (a `shell`
