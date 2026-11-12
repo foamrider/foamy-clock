@@ -1,0 +1,2 @@
+# Paths validate.sh leaves out: `<glob> [checks]  # reason`.
+tests/runtime/*  qmllint  # harness scene: "harness", "plugin" and "plugin/kit" exist only in the run dir preview/harness.py stages, and its qs.Ui is the harness's own

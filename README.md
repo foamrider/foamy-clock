@@ -143,11 +143,19 @@ Shared UI parts come from [foamy-kit](https://github.com/foamrider/foamy-kit),
 vendored under `kit/` (never edit those files; sync from foamy-kit).
 
 ```sh
+mise install                             # the pinned linters and formatters (mise.toml)
+tests/validate.sh                        # kit checks, linters, formatters, then tests/suite.sh
+tests/validate.sh --ci                   # what CI runs: no Quickshell, no Omarchy host
+```
+
+`tests/suite.sh` runs the tests on their own (`--ci`: node and the helper's
+Python tests only; `--fast`: everything but the offscreen runtime tests):
+
+```sh
 for t in tests/*-test.js tests/i18n.test.cjs; do node "$t"; done
 python3 -I -m unittest discover -s tests -p 'test_*.py'
-bash tests/kit-check.sh
-python3 tests/runtime.py                 # offscreen on the installed 4.5 shell; needs ../foamy-kit (FOAMY_KIT)
-python3 "${FOAMY_KIT:-../foamy-kit}/preview/i18n_runtime.py" .   # the catalogs in a live shell
+python3 tests/runtime.py                 # offscreen on the installed 4.5 shell; needs foamy-kit (FOAMY_KIT)
+python3 "$FOAMY_KIT/preview/i18n_runtime.py" .   # the catalogs in a live shell
 ```
 
 The runtime test uses the installed 4.5 shell unless `FOAMY_HOST_45` (a `shell`
