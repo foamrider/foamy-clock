@@ -5,6 +5,7 @@ Python on purpose (foamy-kit DESIGN.md, "Native helpers"): libecal through
 GObject introspection does the recurrence and time-zone expansion. The
 Evolution D-Bus API is private, versioned, and returns master events only.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -62,14 +63,14 @@ def clean_text(value: object, fallback: str = "", limit: int = 256) -> str:
     # also render invisibly. Normalize them within the already bounded slice.
     text = " ".join(raw[:limit].translate(TEXT_CONTROLS).split())
     if len(raw) > limit:
-        text = text[:limit - 1] + "…"
+        text = text[: limit - 1] + "…"
     return text or fallback
 
 
 def stable_id(value: str) -> str:
     digest = hashlib.sha256()
     for offset in range(0, len(value), 4096):
-        digest.update(value[offset:offset + 4096].encode("utf-8"))
+        digest.update(value[offset : offset + 4096].encode("utf-8"))
     return digest.hexdigest()[:32]
 
 
@@ -127,20 +128,37 @@ def overlaps(event: dict[str, Any], day: date, timezone: Any) -> bool:
 
 
 def event_order(event: dict[str, Any]) -> tuple:
-    return (not event["allDay"], event["startDate"] if event["allDay"] else event["start"], event["title"].casefold(), event["id"])
+    return (
+        not event["allDay"],
+        event["startDate"] if event["allDay"] else event["start"],
+        event["title"].casefold(),
+        event["id"],
+    )
 
 
 def base_payload(start: date, end: date, state: str = "missing") -> dict[str, Any]:
     """A month view: every event once, and per date the indices of its events."""
-    return {"kind": "month", "date": start.isoformat(), "rangeEnd": end.isoformat(),
-            "state": state, "events": [], "selectedCalendars": 0,
-            "updatedAt": 0, "cached": state == "missing", "complete": state == "ok",
-            "dates": {
-                (start + timedelta(days=i)).isoformat(): {
-                    "events": [], "state": state, "complete": state == "ok",
-                    "updatedAt": 0, "cached": state == "missing",
-                } for i in range((end - start).days)
-            }}
+    return {
+        "kind": "month",
+        "date": start.isoformat(),
+        "rangeEnd": end.isoformat(),
+        "state": state,
+        "events": [],
+        "selectedCalendars": 0,
+        "updatedAt": 0,
+        "cached": state == "missing",
+        "complete": state == "ok",
+        "dates": {
+            (start + timedelta(days=i)).isoformat(): {
+                "events": [],
+                "state": state,
+                "complete": state == "ok",
+                "updatedAt": 0,
+                "cached": state == "missing",
+            }
+            for i in range((end - start).days)
+        },
+    }
 
 
 class MonthBuilder:
@@ -175,8 +193,7 @@ class MonthBuilder:
         if index is None:
             size = len(encoded) + 1
             # Reserve space for all 42 date records and their index arrays.
-            if (len(self.indices) >= MAX_MONTH_EVENTS
-                    or self.event_bytes + size > MAX_MONTH_BYTES - 65536):
+            if len(self.indices) >= MAX_MONTH_EVENTS or self.event_bytes + size > MAX_MONTH_BYTES - 65536:
                 self.incomplete(available)
                 return
             index = len(self.payload["events"])
@@ -193,15 +210,27 @@ class MonthBuilder:
         for day in self.payload["dates"].values():
             day["events"].sort(key=lambda index: event_order(events[index]))
         states = [day["state"] for day in self.payload["dates"].values()]
-        self.payload["state"] = "ok" if all(state == "ok" for state in states) else "error" if all(state == "error" for state in states) else "partial"
+        self.payload["state"] = (
+            "ok"
+            if all(state == "ok" for state in states)
+            else "error"
+            if all(state == "error" for state in states)
+            else "partial"
+        )
         self.payload["complete"] = all(day["complete"] for day in self.payload["dates"].values())
         return self.payload
 
 
-def fetch_source_events(source: Any, source_name: str, source_color: str,
-                        range_start: datetime, range_end: datetime,
-                        ecal: Any, ical: Any,
-                        default_timezone: Any = None) -> tuple[dict[str, Any], str]:
+def fetch_source_events(
+    source: Any,
+    source_name: str,
+    source_color: str,
+    range_start: datetime,
+    range_end: datetime,
+    ecal: Any,
+    ical: Any,
+    default_timezone: Any = None,
+) -> tuple[dict[str, Any], str]:
     month = MonthBuilder(range_start.date(), range_end.date())
     visited = 0
     callback_failed = False
@@ -212,8 +241,7 @@ def fetch_source_events(source: Any, source_name: str, source_color: str,
         if default_timezone is not None:
             client.set_default_timezone(default_timezone)
         source_id = stable_id(source.get_uid() or "")
-        days = [range_start.date() + timedelta(days=i)
-                for i in range((range_end.date() - range_start.date()).days)]
+        days = [range_start.date() + timedelta(days=i) for i in range((range_end.date() - range_start.date()).days)]
 
         def collect_instance(component, instance_start, instance_end, _data, _cancellable):
             nonlocal visited
@@ -226,27 +254,37 @@ def fetch_source_events(source: Any, source_name: str, source_color: str,
             if instance_start.is_date():
                 start = ical_date(instance_start)
                 end = max(start + timedelta(days=1), ical_date(instance_end))
-                event = {"allDay": True, "start": 0, "end": 0,
-                         "startDate": start.isoformat(), "endDate": end.isoformat()}
+                event = {
+                    "allDay": True,
+                    "start": 0,
+                    "end": 0,
+                    "startDate": start.isoformat(),
+                    "endDate": end.isoformat(),
+                }
             else:
                 fallback_zone = default_timezone or client.get_default_timezone()
                 start = unix_timestamp(instance_start, fallback_zone)
                 end = max(start, unix_timestamp(instance_end, fallback_zone))
-                event = {"allDay": False, "start": start, "end": end,
-                         "startDate": "", "endDate": ""}
+                event = {"allDay": False, "start": start, "end": end, "startDate": "", "endDate": ""}
             matching = [day.isoformat() for day in days if overlaps(event, day, range_start.tzinfo)]
             if not matching:
                 return True
             raw_title = component.get_summary() or ""
             raw_location = component.get_location() or ""
-            shortened = (len(raw_title) > TEXT_LIMITS["title"]
-                         or len(raw_location) > TEXT_LIMITS["location"]
-                         or len(source_name) > TEXT_LIMITS["calendar"])
-            event.update({"id": source_id + ":" + stable_id(component.get_uid() or "") + ":" + str(start),
-                          "title": clean_text(raw_title, UNTITLED_EVENT, TEXT_LIMITS["title"]),
-                          "location": clean_text(raw_location, limit=TEXT_LIMITS["location"]),
-                          "calendar": clean_text(source_name, "Calendar", TEXT_LIMITS["calendar"]),
-                          "color": source_color})
+            shortened = (
+                len(raw_title) > TEXT_LIMITS["title"]
+                or len(raw_location) > TEXT_LIMITS["location"]
+                or len(source_name) > TEXT_LIMITS["calendar"]
+            )
+            event.update(
+                {
+                    "id": source_id + ":" + stable_id(component.get_uid() or "") + ":" + str(start),
+                    "title": clean_text(raw_title, UNTITLED_EVENT, TEXT_LIMITS["title"]),
+                    "location": clean_text(raw_location, limit=TEXT_LIMITS["location"]),
+                    "calendar": clean_text(source_name, "Calendar", TEXT_LIMITS["calendar"]),
+                    "color": source_color,
+                }
+            )
             month.add(event, matching, shortened)
             return True
 
@@ -259,7 +297,9 @@ def fetch_source_events(source: Any, source_name: str, source_color: str,
                 callback_failed = True
                 return False
 
-        client.generate_instances_sync(int(range_start.timestamp()), int(range_end.timestamp()), None, add_instance, None)
+        client.generate_instances_sync(
+            int(range_start.timestamp()), int(range_end.timestamp()), None, add_instance, None
+        )
     except Exception:
         callback_failed = True
     if callback_failed:
@@ -271,6 +311,7 @@ def load_view(start: date, end: date) -> dict[str, Any]:
     if not 0 < (end - start).days <= MAX_QUERY_DAYS:
         raise ValueError("invalid calendar range")
     import gi
+
     gi.require_version("ECal", "2.0")
     gi.require_version("EDataServer", "1.2")
     gi.require_version("ICalGLib", "4.0")
@@ -289,11 +330,13 @@ def load_view(start: date, end: date) -> dict[str, Any]:
                 limited = True
                 break
             name = source.get_display_name() or "Calendar"
-            sources.append((
-                source,
-                name[:TEXT_LIMITS["calendar"] + 1],
-                normalize_color(extension.get_color()),
-            ))
+            sources.append(
+                (
+                    source,
+                    name[: TEXT_LIMITS["calendar"] + 1],
+                    normalize_color(extension.get_color()),
+                )
+            )
     updated_at = int(datetime.now().timestamp())
     month = MonthBuilder(start, end)
     failures = 0
@@ -301,8 +344,10 @@ def load_view(start: date, end: date) -> dict[str, Any]:
     # results bounded. Process limits also cover allocations inside GI/EDS.
     with ThreadPoolExecutor(max_workers=2) as pool:
         for offset in range(0, len(sources), 2):
-            futures = [pool.submit(fetch_source_events, *source, start_time, end_time, ECal, ICalGLib, default_timezone)
-                       for source in sources[offset:offset + 2]]
+            futures = [
+                pool.submit(fetch_source_events, *source, start_time, end_time, ECal, ICalGLib, default_timezone)
+                for source in sources[offset : offset + 2]
+            ]
             for future in futures:
                 result, error = future.result()
                 failures += error == "unavailable"
@@ -327,33 +372,66 @@ def encode(payload: Any) -> bytes:
 
 def valid_payload(payload: Any) -> bool:
     """Validate disk/worker data before it can become a shell model."""
-    if not isinstance(payload, dict) or set(payload) != {"kind", "date", "rangeEnd", "state", "events", "dates", "selectedCalendars", "updatedAt", "cached", "complete"}:
+    if not isinstance(payload, dict) or set(payload) != {
+        "kind",
+        "date",
+        "rangeEnd",
+        "state",
+        "events",
+        "dates",
+        "selectedCalendars",
+        "updatedAt",
+        "cached",
+        "complete",
+    }:
         return False
     try:
         start, end = date.fromisoformat(payload["date"]), date.fromisoformat(payload["rangeEnd"])
         if payload["kind"] != "month" or not 0 < (end - start).days <= MAX_QUERY_DAYS:
             return False
-        if payload["state"] not in ("ok", "partial", "error", "missing") or type(payload["cached"]) is not bool or type(payload["complete"]) is not bool:
+        if (
+            payload["state"] not in ("ok", "partial", "error", "missing")
+            or type(payload["cached"]) is not bool
+            or type(payload["complete"]) is not bool
+        ):
             return False
         if type(payload["selectedCalendars"]) is not int or not 0 <= payload["selectedCalendars"] <= MAX_SOURCES:
             return False
         if type(payload["updatedAt"]) is not int or not 0 <= payload["updatedAt"] <= 253402300799:
             return False
         events, dates = payload["events"], payload["dates"]
-        if not isinstance(events, list) or len(events) > MAX_MONTH_EVENTS or not isinstance(dates, dict) or len(dates) > MAX_QUERY_DAYS:
+        if (
+            not isinstance(events, list)
+            or len(events) > MAX_MONTH_EVENTS
+            or not isinstance(dates, dict)
+            or len(dates) > MAX_QUERY_DAYS
+        ):
             return False
         if set(dates) != {(start + timedelta(days=i)).isoformat() for i in range((end - start).days)}:
             return False
         for event in events:
-            if not isinstance(event, dict) or set(event) != {"id", "title", "calendar", "color", "location", "allDay", "start", "end", "startDate", "endDate"}:
+            if not isinstance(event, dict) or set(event) != {
+                "id",
+                "title",
+                "calendar",
+                "color",
+                "location",
+                "allDay",
+                "start",
+                "end",
+                "startDate",
+                "endDate",
+            }:
                 return False
             for key, limit in {**TEXT_LIMITS, "id": 100, "color": 9, "startDate": 10, "endDate": 10}.items():
-                if (not isinstance(event[key], str) or len(event[key]) > limit
-                        or re.search(r"[\x00-\x1f]", event[key])):
+                if not isinstance(event[key], str) or len(event[key]) > limit or re.search(r"[\x00-\x1f]", event[key]):
                     return False
             if event["color"] != normalize_color(event["color"]) or type(event["allDay"]) is not bool:
                 return False
-            if any(type(event[key]) is not int or not -62135596800 <= event[key] <= 253402300799 for key in ("start", "end")):
+            if any(
+                type(event[key]) is not int or not -62135596800 <= event[key] <= 253402300799
+                for key in ("start", "end")
+            ):
                 return False
             if event["allDay"] and date.fromisoformat(event["endDate"]) <= date.fromisoformat(event["startDate"]):
                 return False
@@ -441,9 +519,18 @@ def read_cache(path: Path | None = None) -> dict[str, Any]:
         if not isinstance(payload, dict) or set(payload) != {"version", "zone", "views"}:
             return empty
         views = payload.get("views")
-        if payload.get("version") != CACHE_VERSION or payload.get("zone") != empty["zone"] or not isinstance(views, dict) or len(views) > MAX_CACHE_ENTRIES:
+        if (
+            payload.get("version") != CACHE_VERSION
+            or payload.get("zone") != empty["zone"]
+            or not isinstance(views, dict)
+            or len(views) > MAX_CACHE_ENTRIES
+        ):
             return empty
-        if any(not valid_payload(view) or key != cache_key(date.fromisoformat(view["date"]), date.fromisoformat(view["rangeEnd"])) for key, view in views.items()):
+        if any(
+            not valid_payload(view)
+            or key != cache_key(date.fromisoformat(view["date"]), date.fromisoformat(view["rangeEnd"]))
+            for key, view in views.items()
+        ):
             return empty
         return payload
     except (OSError, ValueError, TypeError, AttributeError, RecursionError):
@@ -498,14 +585,17 @@ def touch_view(start: date, end: date, path: Path | None = None) -> bool:
     return True
 
 
-def run_bounded_worker(command: list[str], timeout: float = WORKER_SECONDS, max_bytes: int = MAX_RESPONSE_BYTES) -> dict[str, Any] | None:
+def run_bounded_worker(
+    command: list[str], timeout: float = WORKER_SECONDS, max_bytes: int = MAX_RESPONSE_BYTES
+) -> dict[str, Any] | None:
     """Never hand an unbounded pipe to Qt, even if the worker malfunctions."""
     output = bytearray()
     deadline = monotonic_time.monotonic() + timeout
     # glibc's default per-thread arenas reserve large virtual ranges even for
     # small calendars. Bound arenas before exec so RLIMIT_AS reflects useful work.
-    with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                          env={**os.environ, "MALLOC_ARENA_MAX": "2"}) as process:
+    with subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env={**os.environ, "MALLOC_ARENA_MAX": "2"}
+    ) as process:
         try:
             with selectors.DefaultSelector() as selector:
                 selector.register(process.stdout, selectors.EVENT_READ)
@@ -534,10 +624,14 @@ def run_bounded_worker(command: list[str], timeout: float = WORKER_SECONDS, max_
 def merge_month(fresh, cached):
     """Retain complete cached dates individually without hiding fresh good dates."""
     builder = MonthBuilder(date.fromisoformat(fresh["date"]), date.fromisoformat(fresh["rangeEnd"]))
-    builder.payload.update(selectedCalendars=fresh["selectedCalendars"] or cached["selectedCalendars"], updatedAt=fresh["updatedAt"])
+    builder.payload.update(
+        selectedCalendars=fresh["selectedCalendars"] or cached["selectedCalendars"], updatedAt=fresh["updatedAt"]
+    )
     for key, day in fresh["dates"].items():
         old = cached["dates"][key]
-        keep_old = not day["complete"] and (old["complete"] or day["state"] == "error" and old["state"] in ("ok", "partial"))
+        keep_old = not day["complete"] and (
+            old["complete"] or day["state"] == "error" and old["state"] in ("ok", "partial")
+        )
         source, chosen = (cached, old) if keep_old else (fresh, day)
         for index in chosen["events"]:
             builder.add(source["events"][index], [key])
@@ -557,8 +651,14 @@ def emit_view(payload):
     header = {**payload, "kind": "month-start", "events": []}
     messages = [header]
     for offset in range(0, len(payload["events"]), MAX_EVENTS):
-        messages.append({"kind": "month-events", "date": payload["date"],
-                         "rangeEnd": payload["rangeEnd"], "events": payload["events"][offset:offset + MAX_EVENTS]})
+        messages.append(
+            {
+                "kind": "month-events",
+                "date": payload["date"],
+                "rangeEnd": payload["rangeEnd"],
+                "events": payload["events"][offset : offset + MAX_EVENTS],
+            }
+        )
     messages.append({"kind": "month-end", "date": payload["date"], "rangeEnd": payload["rangeEnd"]})
     for message in messages:
         raw = encode(message)
@@ -568,8 +668,15 @@ def emit_view(payload):
 
 
 def refreshed_view(start: date, end: date, path: Path | None = None) -> dict[str, Any]:
-    command = [sys.executable, str(Path(__file__).resolve()), "--worker",
-               "--range-start", start.isoformat(), "--range-end", end.isoformat()]
+    command = [
+        sys.executable,
+        str(Path(__file__).resolve()),
+        "--worker",
+        "--range-start",
+        start.isoformat(),
+        "--range-end",
+        end.isoformat(),
+    ]
     fresh = run_bounded_worker(command, max_bytes=MAX_MONTH_BYTES)
     if fresh is None or fresh["date"] != start.isoformat() or fresh["rangeEnd"] != end.isoformat():
         fresh = base_payload(start, end, "error")
@@ -585,7 +692,11 @@ def refreshed_view(start: date, end: date, path: Path | None = None) -> dict[str
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cached", action="store_true")
-    parser.add_argument("--cache-only", action="store_true", help="refresh the bounded disk cache without sending event data to the shell")
+    parser.add_argument(
+        "--cache-only",
+        action="store_true",
+        help="refresh the bounded disk cache without sending event data to the shell",
+    )
     parser.add_argument("--max-age", type=int, default=0)
     parser.add_argument("--range-start", type=date.fromisoformat, required=True)
     parser.add_argument("--range-end", type=date.fromisoformat, required=True)
@@ -622,6 +733,7 @@ def main() -> int:
     if not arguments.cache_only:
         emit_view(payload)
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

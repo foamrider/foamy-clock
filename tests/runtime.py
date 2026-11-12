@@ -10,6 +10,7 @@ Usage: tests/runtime.py [--language en|no]
 The 4.5 host is FOAMY_HOST_45, else $OMARCHY_TEST_ROOT/shell, else the
 installed /usr/share/omarchy/shell.
 """
+
 import argparse
 import os
 import sys
@@ -59,6 +60,7 @@ def main():
     for language in [args.language] if args.language else ["en", "no"]:
         ok &= run("4.5", language)
     return 0 if ok else 1
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
