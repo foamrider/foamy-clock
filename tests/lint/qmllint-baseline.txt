@@ -1,0 +1,171 @@
+# qmllint findings accepted when the check was adopted. tests/validate.sh fails on any
+# finding not listed here. Regenerate with `tests/validate.sh --update-baseline qmllint`
+# only to drop fixed entries or after reviewing every added one; never to pass a check.
+BarWidget.qml: missing-property: Member "iconSlot" not found on type "QObject" | fixedHeight: root.vertical ? root.verticalLines.length * Style.bar.iconSlot : -1
+BarWidget.qml: missing-property: Member "iconSlot" not found on type "QObject" | height: Style.bar.iconSlot
+BarWidget.qml: missing-property: Member "iconSlot" not found on type "QObject" | readonly property real openPanelIndicatorHeight: Math.max(Style.space(10), Math.round(Style.bar.iconSlot * 0.55))
+BarWidget.qml: missing-property: Member "iconSlot" not found on type "QObject" | readonly property real openPanelIndicatorWidth: root.vertical ? Style.bar.iconSlot : horizontalContent.implicitWidth
+BarWidget.qml: missing-property: Member "run" not found on type "QObject" | root.bar.run("omarchy-menu-timezone")
+BarWidget.qml: unqualified: Unqualified access | color: button.foreground
+BarWidget.qml: unqualified: Unqualified access | fontFamily: button.fontFamily
+BarWidget.qml: unqualified: Unqualified access | fontSize: modelData.length > 3 ? button.fontSize * 0.9 : button.fontSize
+BarWidget.qml: unqualified: Unqualified access | fontSize: modelData.length > 3 ? button.fontSize * 0.9 : button.fontSize
+BarWidget.qml: unqualified: Unqualified access | width: button.width
+ClockFormatLabel.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: FoamyStyle.font.body
+ClockFormatLabel.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: FoamyStyle.font.body
+ClockFormatLabel.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: FoamyStyle.font.body
+ClockFormatLabel.qml: missing-property: Member "body" not found on type "QObject" | fontSize: FoamyStyle.font.body
+ClockFormatLabel.qml: unqualified: Unqualified access | spacing: Style.spaceReal(6)
+ClockPanel.qml: id-shadows-member: Id for object FoamyPopup shadows property "popup". Rename one or the other. | if (popup.bodyItem)
+ClockPanel.qml: id-shadows-member: Note: Id defined here | id: popup
+ClockPanel.qml: missing-property: Member "centerHoverRevealSuppressed" not found on type Panel::bar with type QObject | root.bar.centerHoverRevealSuppressed = value
+ClockPanel.qml: missing-property: Member "setCenterHoverRevealSuppressed" not found on type "QObject" | if (root.bar && typeof root.bar.setCenterHoverRevealSuppressed === "function")
+ClockPanel.qml: missing-property: Member "setCenterHoverRevealSuppressed" not found on type "QObject" | root.bar.setCenterHoverRevealSuppressed(value)
+ClockPanel.qml: missing-property: Member "settingsBackTarget" not found on type "QQuickItem" | focusTarget: bodyItem ? (root.editingSettings ? bodyItem.settingsBackTarget : bodyItem) : null
+ClockPanel.qml: missing-property: Member "settingsOpened" not found on type "QQuickItem" | popup.bodyItem.settingsOpened()
+ClockPanel.qml: missing-property: Member "switchPanelFrom" not found on type "QObject" | if (root.bar && typeof root.bar.switchPanelFrom === "function")
+ClockPanel.qml: missing-property: Member "switchPanelFrom" not found on type "QObject" | return root.bar.switchPanelFrom(root.barIdentity, direction)
+ClockPanel.qml: unqualified: Unqualified access | availableHeight: popup.availableCardHeight
+ClockPanel.qml: unqualified: Unqualified access | editingSettings: root.editingSettings
+ClockPanel.qml: unqualified: Unqualified access | if (root.hostWidget)
+ClockPanel.qml: unqualified: Unqualified access | launchError: root.launchError
+ClockPanel.qml: unqualified: Unqualified access | onCalendarRequested: root.openCalendar()
+ClockPanel.qml: unqualified: Unqualified access | onCloseRequestedByView: root.editingSettings ? root.closeSettings() : root.close()
+ClockPanel.qml: unqualified: Unqualified access | onCloseRequestedByView: root.editingSettings ? root.closeSettings() : root.close()
+ClockPanel.qml: unqualified: Unqualified access | onCloseRequestedByView: root.editingSettings ? root.closeSettings() : root.close()
+ClockPanel.qml: unqualified: Unqualified access | onRetryRequested: if (root.hostWidget)
+ClockPanel.qml: unqualified: Unqualified access | onSettingsClosed: root.closeSettings()
+ClockPanel.qml: unqualified: Unqualified access | onSettingsRequested: root.openSettings()
+ClockPanel.qml: unqualified: Unqualified access | onWeekStartToggleRequested: if (root.hostWidget)
+ClockPanel.qml: unqualified: Unqualified access | opened: root.opened
+ClockPanel.qml: unqualified: Unqualified access | retryable: root.hostWidget ? root.hostWidget.canRetry : false
+ClockPanel.qml: unqualified: Unqualified access | retryable: root.hostWidget ? root.hostWidget.canRetry : false
+ClockPanel.qml: unqualified: Unqualified access | root.hostWidget.retrySave()
+ClockPanel.qml: unqualified: Unqualified access | root.hostWidget.save(key, value)
+ClockPanel.qml: unqualified: Unqualified access | root.hostWidget.toggleWeekStart()
+ClockPanel.qml: unqualified: Unqualified access | root.switchPanel(direction)
+ClockPanel.qml: unqualified: Unqualified access | saving: root.hostWidget ? root.hostWidget.saving : false
+ClockPanel.qml: unqualified: Unqualified access | saving: root.hostWidget ? root.hostWidget.saving : false
+ClockPanel.qml: unqualified: Unqualified access | settings: root.settings
+ClockPanel.qml: unqualified: Unqualified access | settingsError: root.hostWidget ? root.hostWidget.settingsError : ""
+ClockPanel.qml: unqualified: Unqualified access | settingsError: root.hostWidget ? root.hostWidget.settingsError : ""
+ClockPanel.qml: unqualified: Unqualified access | verticalInset: popup.verticalContentInset
+ClockService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var index of day.events) {
+ClockService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var key of Object.keys(month.dates)) {
+ClockService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var offset = 0; offset <= ahead; offset++) {
+ClockService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var range of ranges) {
+ClockService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var range of ranges) {
+ClockService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var attempted = root.lastAgendaRangeKey === root.agendaRangeKey ? root.lastAgendaRangeRefreshMs : 0
+ClockService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var attempts = root.prefetchAttempts
+ClockService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var dates = ({})
+ClockService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var day = month.dates[key]
+ClockService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var dots = []
+ClockService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var event = month.events[index]
+ClockService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var first = Model.monthGrid(month.year, month.month, root.weekStart, "")[0].days[0]
+ClockService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var id = String(event.id).split(":")[0]
+ClockService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var key = range.start + ":" + range.end
+ClockService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var key = range.start + ":" + range.end
+ClockService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var month = Model.stepMonth(base.getFullYear(), base.getMonth(), offset)
+ClockService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var month = root.pendingMonth
+ClockService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var payload = JSON.parse(String(raw || ""))
+ClockService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var seen = new Set()
+ClockService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var updated = root.monthIsCurrent() && root.monthView.state === "ok" ? root.monthView.updatedAt * 1000 : 0
+ClockService.qml: import: Type ClockService not declared as singleton in qmldir but using pragma Singleton
+ClockView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var visible = service.weeks.some(w => w.days.some(d => d.key === cursorKey && d.inMonth))
+ClockView.qml: missing-property: Member "background" not found on type "QObject" | readonly property color weekColumnColor: Qt.tint(Commons.Color.popups.background, Qt.alpha(FoamyPalette.text, 0.035))
+ClockView.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: FoamyStyle.font.body
+ClockView.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: FoamyStyle.font.bodySmall
+ClockView.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: FoamyStyle.font.bodySmall
+ClockView.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: FoamyStyle.font.bodySmall
+ClockView.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: FoamyStyle.font.bodySmall
+ClockView.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: FoamyStyle.font.bodySmall
+ClockView.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: FoamyStyle.font.bodySmall
+ClockView.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: FoamyStyle.font.bodySmall
+ClockView.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: FoamyStyle.font.bodySmall
+ClockView.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: FoamyStyle.font.bodySmall
+ClockView.qml: missing-property: Member "hairline" not found on type "QObject" | border.width: modelData.today || selected ? Style.spacing.hairline : 0
+ClockView.qml: missing-property: Member "iconLarge" not found on type "QObject" | font.pixelSize: root.compactHeight ? FoamyStyle.font.iconLarge : Style.space(25)
+ClockView.qml: missing-property: Member "iconLarge" not found on type "QObject" | font.pixelSize: root.compactHeight ? FoamyStyle.font.iconLarge : Style.space(25)
+ClockView.qml: missing-property: Member "numeral" not found on type "QObject" | font.pixelSize: root.veryShortHeight ? Style.space(32) : root.compactHeight ? FoamyStyle.font.numeralCompact : FoamyStyle.font.numeral
+ClockView.qml: missing-property: Member "numeralCompact" not found on type "QObject" | font.pixelSize: root.veryShortHeight ? Style.space(32) : root.compactHeight ? FoamyStyle.font.numeralCompact : FoamyStyle.font.numeral
+ClockView.qml: missing-property: Member "subtitle" not found on type "QObject" | font.pixelSize: FoamyStyle.font.subtitle
+ClockView.qml: unqualified: Unqualified access | Accessible.name: root.displayLocale.toString(new Date(modelData.year, modelData.month, modelData.day), Locale.LongFormat)
+ClockView.qml: unqualified: Unqualified access | Accessible.role: service.agendaState === "error" ? Accessible.AlertMessage : Accessible.StaticText
+ClockView.qml: unqualified: Unqualified access | color: modelData.inMonth ? FoamyPalette.text : FoamyPalette.mutedText
+ClockView.qml: unqualified: Unqualified access | color: service.agendaState === "error" ? Commons.Color.urgent : FoamyPalette.mutedText
+ClockView.qml: unqualified: Unqualified access | enabled: !service.viewingCurrentMonth || !service.selectedDateIsToday
+ClockView.qml: unqualified: Unqualified access | enabled: !service.viewingCurrentMonth || !service.selectedDateIsToday
+ClockView.qml: unqualified: Unqualified access | height: root.cellHeight
+ClockView.qml: unqualified: Unqualified access | height: root.cellHeight
+ClockView.qml: unqualified: Unqualified access | leftPadding: root.weekColumnPadding
+ClockView.qml: unqualified: Unqualified access | model: modelData.days
+ClockView.qml: unqualified: Unqualified access | model: service.agendaEvents
+ClockView.qml: unqualified: Unqualified access | model: service.weekdays
+ClockView.qml: unqualified: Unqualified access | model: service.weeks
+ClockView.qml: unqualified: Unqualified access | onClicked: root.calendarRequested()
+ClockView.qml: unqualified: Unqualified access | onClicked: service.moveMonth(-1)
+ClockView.qml: unqualified: Unqualified access | onClicked: service.moveMonth(1)
+ClockView.qml: unqualified: Unqualified access | onClicked: service.selectDate(dayCell.modelData.year, dayCell.modelData.month, dayCell.modelData.day)
+ClockView.qml: unqualified: Unqualified access | onRefreshClicked: service.refreshAgenda(true)
+ClockView.qml: unqualified: Unqualified access | readonly property bool hasCursor: modelData.key === root.cursorKey
+ClockView.qml: unqualified: Unqualified access | readonly property bool selected: modelData.key === service.selectedDateKey
+ClockView.qml: unqualified: Unqualified access | readonly property real fixedHeight: hero.height + heroBoundary.height + calendarHeader.implicitHeight + (service.agendaEnabled ? agendaHeading.height + agendaBl
+ClockView.qml: unqualified: Unqualified access | readonly property string agendaStatus: root.eventState(modelData)
+ClockView.qml: unqualified: Unqualified access | readonly property var dots: service.dotsForDate(modelData.key)
+ClockView.qml: unqualified: Unqualified access | refreshEnabled: !service.agendaLoading
+ClockView.qml: unqualified: Unqualified access | refreshTooltip: service.agendaLoading ? FoamyI18n.t("Refreshing calendars") : FoamyI18n.t("Refresh calendars")
+ClockView.qml: unqualified: Unqualified access | refreshing: root.opened && !root.editingSettings && service.agendaLoading
+ClockView.qml: unqualified: Unqualified access | rightPadding: root.weekColumnPadding
+ClockView.qml: unqualified: Unqualified access | root.cursorKey = ""
+ClockView.qml: unqualified: Unqualified access | root.cursorKey = dayCell.modelData.key
+ClockView.qml: unqualified: Unqualified access | service.goToToday()
+ClockView.qml: unqualified: Unqualified access | service.moveMonth(event.angleDelta.y > 0 ? -1 : 1)
+ClockView.qml: unqualified: Unqualified access | showRefresh: service.agendaEnabled
+ClockView.qml: unqualified: Unqualified access | spacing: root.cellSpacing
+ClockView.qml: unqualified: Unqualified access | status: root.launchError || (service.agendaEnabled ? root.updatedAgoText() : "")
+ClockView.qml: unqualified: Unqualified access | statusClickable: service.agendaState === "partial"
+ClockView.qml: unqualified: Unqualified access | statusTooltip: service.agendaState === "partial" ? FoamyI18n.t("Some events may be missing. Open calendar for the full view.") : ""
+ClockView.qml: unqualified: Unqualified access | text: !service.dateIsIncomplete(dayCell.modelData.key) ? FoamyI18n.t("Select this date to see events") : FoamyI18n.t("Calendar overview may be incomplete")
+ClockView.qml: unqualified: Unqualified access | text: (eventRow.modelData.title || FoamyI18n.t("Untitled event")) + "\n" + root.eventTimeText(eventRow.modelData) + " · " + root.eventDetails(eventRow.modelData
+ClockView.qml: unqualified: Unqualified access | text: (eventRow.modelData.title || FoamyI18n.t("Untitled event")) + "\n" + root.eventTimeText(eventRow.modelData) + " · " + root.eventDetails(eventRow.modelData
+ClockView.qml: unqualified: Unqualified access | text: FoamyI18n.number(modelData.day)
+ClockView.qml: unqualified: Unqualified access | text: FoamyI18n.number(modelData.week)
+ClockView.qml: unqualified: Unqualified access | text: eventRow.agendaStatus === "ongoing" ? FoamyI18n.t("Now · %1", root.eventTimeText(eventRow.modelData) + " · " + root.eventDetails(eventRow.modelData)) : ro
+ClockView.qml: unqualified: Unqualified access | text: eventRow.agendaStatus === "ongoing" ? FoamyI18n.t("Now · %1", root.eventTimeText(eventRow.modelData) + " · " + root.eventDetails(eventRow.modelData)) : ro
+ClockView.qml: unqualified: Unqualified access | text: eventRow.agendaStatus === "ongoing" ? FoamyI18n.t("Now · %1", root.eventTimeText(eventRow.modelData) + " · " + root.eventDetails(eventRow.modelData)) : ro
+ClockView.qml: unqualified: Unqualified access | text: eventRow.agendaStatus === "ongoing" ? FoamyI18n.t("Now · %1", root.eventTimeText(eventRow.modelData) + " · " + root.eventDetails(eventRow.modelData)) : ro
+ClockView.qml: unqualified: Unqualified access | text: eventRow.modelData.allDay ? FoamyI18n.t("All day") : root.displayLocale.toString(new Date(Number(eventRow.modelData.start) * 1000), root.timeFormat)
+ClockView.qml: unqualified: Unqualified access | text: eventRow.modelData.allDay ? FoamyI18n.t("All day") : root.displayLocale.toString(new Date(Number(eventRow.modelData.start) * 1000), root.timeFormat)
+ClockView.qml: unqualified: Unqualified access | text: root.displayLocale.dayName(modelData, Locale.NarrowFormat)
+ClockView.qml: unqualified: Unqualified access | text: root.displayLocale.toString(service.now, ":ss")
+ClockView.qml: unqualified: Unqualified access | text: root.displayLocale.toString(service.now, "AP")
+ClockView.qml: unqualified: Unqualified access | text: service.agendaState === "loading" ? FoamyI18n.t("Loading events…") : service.agendaState === "error" || service.agendaState === "partial" ? root.agendaMes
+ClockView.qml: unqualified: Unqualified access | text: service.agendaState === "loading" ? FoamyI18n.t("Loading events…") : service.agendaState === "error" || service.agendaState === "partial" ? root.agendaMes
+ClockView.qml: unqualified: Unqualified access | text: service.agendaState === "loading" ? FoamyI18n.t("Loading events…") : service.agendaState === "error" || service.agendaState === "partial" ? root.agendaMes
+ClockView.qml: unqualified: Unqualified access | text: service.agendaState === "loading" ? FoamyI18n.t("Loading events…") : service.agendaState === "error" || service.agendaState === "partial" ? root.agendaMes
+ClockView.qml: unqualified: Unqualified access | text: service.agendaState === "loading" ? FoamyI18n.t("Loading events…") : service.agendaState === "error" || service.agendaState === "partial" ? root.agendaMes
+ClockView.qml: unqualified: Unqualified access | visible: dayMouse.containsMouse && (dayCell.dotCount > 0 || service.dateIsIncomplete(dayCell.modelData.key))
+ClockView.qml: unqualified: Unqualified access | visible: service.agendaEnabled
+ClockView.qml: unqualified: Unqualified access | visible: service.agendaEvents.length === 0
+ClockView.qml: unqualified: Unqualified access | width: Style.space(root.twelveHour ? 72 : 58)
+ClockView.qml: unqualified: Unqualified access | width: agendaScroll.width
+ClockView.qml: unqualified: Unqualified access | width: agendaScroll.width - (agendaScroll.interactive ? Style.space(10) : 0)
+ClockView.qml: unqualified: Unqualified access | width: agendaScroll.width - (agendaScroll.interactive ? Style.space(10) : 0)
+ClockView.qml: unqualified: Unqualified access | width: root.cellWidth
+ClockView.qml: unqualified: Unqualified access | width: root.cellWidth
+ClockView.qml: unqualified: Unqualified access | width: root.gutterWidth
+ClockView.qml: unqualified: Unqualified access | width: root.weekColumnWidth
+SettingsPane.qml: missing-property: Member "caption" not found on type "QObject" | font.pixelSize: FoamyStyle.font.caption
+SettingsPane.qml: unqualified: Unqualified access | label: root.label(field.key)
+SettingsPane.qml: unqualified: Unqualified access | labelDelegate: field.glyphLabels ? glyphLabel : null
+SettingsPane.qml: unqualified: Unqualified access | presets: root.formatOptions(modelData)
+SettingsPane.qml: unqualified: Unqualified access | readonly property var value: root.current(key)
+SettingsPane.qml: unqualified: Unqualified access | root.save(field.key, next)
+SettingsPane.qml: unqualified: Unqualified access | root.save(field.key, next)
+preview/Preview.qml: id-shadows-member: Id for object FoamyPopup shadows property "popup". Rename one or the other. | readonly property Item popup: popup
+preview/Preview.qml: id-shadows-member: Note: Id defined here | id: popup
+preview/Preview.qml: incompatible-type: Cannot assign binding of type FoamyPopup to QQuickItem | readonly property Item popup: popup
+preview/Preview.qml: unqualified: Unqualified access | availableHeight: popup.availableCardHeight
+preview/Preview.qml: unqualified: Unqualified access | editingSettings: preview.previewState.indexOf("settings") === 0
+preview/Preview.qml: unqualified: Unqualified access | settingsError: preview.previewState === "settings-error" ? "Couldn't save the setting." : ""
+preview/Preview.qml: unqualified: Unqualified access | verticalInset: popup.verticalContentInset

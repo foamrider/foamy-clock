@@ -1,0 +1,4 @@
+# ruff findings accepted when the check was adopted. tests/validate.sh fails on any
+# finding not listed here. Regenerate with `tests/validate.sh --update-baseline ruff`
+# only to drop fixed entries or after reviewing every added one; never to pass a check.
+calendar-events.py: C901: `valid_payload` is too complex (> 15) | def valid_payload(payload: Any) -> bool: [24]
