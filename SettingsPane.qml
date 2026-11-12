@@ -15,8 +15,8 @@ FoamySettingsPage {
 
   function current(key) { return Prefs.value(Schema.fields, root.settings, key) }
   function label(key) { return FoamyI18n.t(Schema.field(key).label) }
-  // "" follows the Omarchy language's date locale on 4.5, the system on 4.0.
-  readonly property string followLabel: FoamyI18n.translationsAvailable ? FoamyI18n.t("Omarchy language") : FoamyI18n.t("System")
+  // "" follows the Omarchy language's date locale.
+  readonly property string followLabel: FoamyI18n.t("Omarchy language")
   readonly property var dateLocale: Qt.locale(Schema.localeName(root.current("locale"), FoamyI18n.formatLocale))
 
   function formatOptions(key) {

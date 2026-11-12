@@ -50,9 +50,8 @@ PanelKeyCatcher {
   readonly property bool twelveHour: preference("timeFormat") === "12-hour"
   readonly property string timeFormat: twelveHour ? "h:mm AP" : "HH:mm"
   // The catalog pattern speaks for the Omarchy language's own date locale;
-  // for any other date locale (4.0, or a chosen one) use that locale's long
-  // format without the year.
-  readonly property bool catalogDates: FoamyI18n.translationsAvailable && preference("locale") === ""
+  // for a chosen date locale use that locale's long format without the year.
+  readonly property bool catalogDates: preference("locale") === ""
   function datePattern(catalogKey) {
     return catalogDates ? FoamyI18n.t(catalogKey) : Model.dateWithoutYear(displayLocale.dateFormat(Locale.LongFormat))
   }

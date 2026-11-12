@@ -151,8 +151,7 @@ python3 "${FOAMY_KIT:-../foamy-kit}/preview/i18n_runtime.py" .   # the catalogs 
 ```
 
 The runtime test uses the installed 4.5 shell unless `FOAMY_HOST_45` (a `shell`
-directory) or `OMARCHY_TEST_ROOT` (an Omarchy tree) names another; `--host 4.0`
-and `--host both` run 4.0 only when `FOAMY_HOST_40` names a 4.0 shell.
+directory) or `OMARCHY_TEST_ROOT` (an Omarchy tree) names another.
 
 `preview/Preview.qml` holds mock states for the foamy-kit preview harness
 (`foamy-kit/preview/render.py`).

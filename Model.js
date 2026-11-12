@@ -85,8 +85,8 @@ function isoWeekLiteral(year, month, day) {
 }
 
 // A locale's long date format without the year, for the popup headline when
-// the plugin catalog cannot speak for the date locale (4.0, or a date locale
-// other than the Omarchy language): "dddd d. MMMM yyyy" -> "dddd d. MMMM",
+// the plugin catalog cannot speak for the date locale (a date locale other
+// than the Omarchy language): "dddd d. MMMM yyyy" -> "dddd d. MMMM",
 // "dddd, MMMM d, yyyy" -> "dddd, MMMM d", "yyyy年M月d日dddd" -> "M月d日dddd".
 // Quoted literals are kept as they are.
 function dateWithoutYear(format) {

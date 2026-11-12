@@ -5,11 +5,10 @@ Uses the foamy-kit preview harness (temp HOME/XDG, no Wayland/Hyprland,
 software renderer; 4.5 QML is loaded, never its scripts). The session bus is
 the harness's private bus, which has no service files, so the agenda worker
 can neither reach nor activate a live EDS.
-Usage: tests/runtime.py [--host 4.5|4.0|both] [--language en|no]
+Usage: tests/runtime.py [--language en|no]
 
 The 4.5 host is FOAMY_HOST_45, else $OMARCHY_TEST_ROOT/shell, else the
-installed /usr/share/omarchy/shell (the default --host). 4.0 runs only when
-FOAMY_HOST_40 names a 4.0 shell; otherwise --host 4.0/both print SKIP for it.
+installed /usr/share/omarchy/shell.
 """
 import argparse
 import os
@@ -48,19 +47,12 @@ def run(host, language):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--host", default="4.5", choices=("4.5", "4.0", "both"))
-    parser.add_argument("--language", default=None)
+    parser.add_argument("--language", default=None, choices=("en", "no"))
     args = parser.parse_args()
-    hosts = ["4.5", "4.0"] if args.host == "both" else [args.host]
-    if "4.0" in hosts and not os.environ.get("FOAMY_HOST_40"):
-        print("SKIP 4.0: set FOAMY_HOST_40 to an Omarchy 4.0 shell to run it")
-        hosts.remove("4.0")
     ok = True
-    for host in hosts:
-        for language in ([args.language] if args.language else (["en", "no"] if host == "4.5" else ["en"])):
-            ok &= run(host, language)
+    for language in [args.language] if args.language else ["en", "no"]:
+        ok &= run("4.5", language)
     return 0 if ok else 1
-
 
 if __name__ == "__main__":
     raise SystemExit(main())
