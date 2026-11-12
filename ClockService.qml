@@ -1,6 +1,5 @@
 pragma Singleton
 import QtQuick
-import Quickshell
 import Quickshell.Io
 import "kit"
 import "Model.js" as Model

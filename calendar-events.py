@@ -34,7 +34,6 @@ MAX_QUERY_DAYS = 42
 MAX_EVENTS = 100
 MAX_SOURCES = 32
 MAX_OCCURRENCES = 2048
-MAX_DOTS = 5
 MAX_RESPONSE_BYTES = 256 * 1024
 MAX_MONTH_EVENTS = 1000
 MAX_MONTH_BYTES = 2 * 1024 * 1024
@@ -358,7 +357,7 @@ def valid_payload(payload: Any) -> bool:
                 return False
             if event["allDay"] and date.fromisoformat(event["endDate"]) <= date.fromisoformat(event["startDate"]):
                 return False
-        for key, day in dates.items():
+        for day in dates.values():
             if not isinstance(day, dict) or set(day) != {"events", "state", "complete", "updatedAt", "cached"}:
                 return False
             if not isinstance(day["events"], list) or len(day["events"]) > MAX_EVENTS:
