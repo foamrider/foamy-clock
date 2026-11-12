@@ -131,25 +131,24 @@ def event_order(event: dict[str, Any]) -> tuple:
     return (not event["allDay"], event["startDate"] if event["allDay"] else event["start"], event["title"].casefold(), event["id"])
 
 
-def base_payload(kind: str, start: date, end: date, state: str = "missing") -> dict[str, Any]:
-    payload = {"kind": kind, "date": start.isoformat(), "rangeEnd": end.isoformat(),
-               "state": state, "events": [], "dates": {}, "selectedCalendars": 0,
-               "updatedAt": 0, "cached": state == "missing", "complete": state == "ok"}
-    if kind == "month":
-        payload["dates"] = {
-            (start + timedelta(days=i)).isoformat(): {
-                "events": [], "state": state, "complete": state == "ok",
-                "updatedAt": 0, "cached": state == "missing",
-            } for i in range((end - start).days)
-        }
-    return payload
+def base_payload(start: date, end: date, state: str = "missing") -> dict[str, Any]:
+    """A month view: every event once, and per date the indices of its events."""
+    return {"kind": "month", "date": start.isoformat(), "rangeEnd": end.isoformat(),
+            "state": state, "events": [], "selectedCalendars": 0,
+            "updatedAt": 0, "cached": state == "missing", "complete": state == "ok",
+            "dates": {
+                (start + timedelta(days=i)).isoformat(): {
+                    "events": [], "state": state, "complete": state == "ok",
+                    "updatedAt": 0, "cached": state == "missing",
+                } for i in range((end - start).days)
+            }}
 
 
 class MonthBuilder:
     """Store each occurrence once, with bounded per-day references and bytes."""
 
     def __init__(self, start: date, end: date):
-        self.payload = base_payload("month", start, end, "ok")
+        self.payload = base_payload(start, end, "ok")
         self.indices: dict[bytes, int] = {}
         self.event_bytes = 0
 
@@ -202,11 +201,9 @@ class MonthBuilder:
 
 def fetch_source_events(source: Any, source_name: str, source_color: str,
                         range_start: datetime, range_end: datetime,
-                        ecal: Any, ical: Any, kind: str = "day",
-                        default_timezone: Any = None) -> tuple[Any, str]:
-    events: list[dict[str, Any]] = []
-    month = MonthBuilder(range_start.date(), range_end.date()) if kind == "month" else None
-    limited = False
+                        ecal: Any, ical: Any,
+                        default_timezone: Any = None) -> tuple[dict[str, Any], str]:
+    month = MonthBuilder(range_start.date(), range_end.date())
     visited = 0
     callback_failed = False
     try:
@@ -220,12 +217,10 @@ def fetch_source_events(source: Any, source_name: str, source_color: str,
                 for i in range((range_end.date() - range_start.date()).days)]
 
         def collect_instance(component, instance_start, instance_end, _data, _cancellable):
-            nonlocal visited, limited
+            nonlocal visited
             visited += 1
             if visited > MAX_OCCURRENCES:
-                limited = True
-                if month:
-                    month.incomplete(month.payload["dates"])
+                month.incomplete(month.payload["dates"])
                 return False
             if component.get_status() == ical.PropertyStatus.CANCELLED:
                 return True
@@ -243,9 +238,6 @@ def fetch_source_events(source: Any, source_name: str, source_color: str,
             matching = [day.isoformat() for day in days if overlaps(event, day, range_start.tzinfo)]
             if not matching:
                 return True
-            if not month and len(events) >= MAX_EVENTS:
-                limited = True
-                return False
             raw_title = component.get_summary() or ""
             raw_location = component.get_location() or ""
             shortened = (len(raw_title) > TEXT_LIMITS["title"]
@@ -256,11 +248,7 @@ def fetch_source_events(source: Any, source_name: str, source_color: str,
                           "location": clean_text(raw_location, limit=TEXT_LIMITS["location"]),
                           "calendar": clean_text(source_name, "Calendar", TEXT_LIMITS["calendar"]),
                           "color": source_color})
-            if month:
-                month.add(event, matching, shortened)
-            else:
-                limited |= shortened
-                events.append(event)
+            month.add(event, matching, shortened)
             return True
 
         def add_instance(*args):
@@ -275,15 +263,13 @@ def fetch_source_events(source: Any, source_name: str, source_color: str,
         client.generate_instances_sync(int(range_start.timestamp()), int(range_end.timestamp()), None, add_instance, None)
     except Exception:
         callback_failed = True
-    if month:
-        if callback_failed:
-            month.incomplete(month.payload["dates"])
-        return month.finish(), "unavailable" if callback_failed else ""
-    return events, "unavailable" if callback_failed else "limited" if limited else ""
+    if callback_failed:
+        month.incomplete(month.payload["dates"])
+    return month.finish(), "unavailable" if callback_failed else ""
 
 
-def load_view(kind: str, start: date, end: date) -> dict[str, Any]:
-    if not 0 < (end - start).days <= (1 if kind == "day" else MAX_QUERY_DAYS):
+def load_view(start: date, end: date) -> dict[str, Any]:
+    if not 0 < (end - start).days <= MAX_QUERY_DAYS:
         raise ValueError("invalid calendar range")
     import gi
     gi.require_version("ECal", "2.0")
@@ -304,49 +290,36 @@ def load_view(kind: str, start: date, end: date) -> dict[str, Any]:
                 limited = True
                 break
             name = source.get_display_name() or "Calendar"
-            limited |= kind == "day" and len(name) > TEXT_LIMITS["calendar"]
             sources.append((
                 source,
                 name[:TEXT_LIMITS["calendar"] + 1],
                 normalize_color(extension.get_color()),
             ))
-    payload = base_payload(kind, start, end, "ok")
-    payload["selectedCalendars"] = len(sources)
-    payload["updatedAt"] = int(datetime.now().timestamp())
-    month = MonthBuilder(start, end) if kind == "month" else None
+    updated_at = int(datetime.now().timestamp())
+    month = MonthBuilder(start, end)
     failures = 0
     # Two clients and two futures at a time keep both EDS work and retained
     # results bounded. Process limits also cover allocations inside GI/EDS.
     with ThreadPoolExecutor(max_workers=2) as pool:
         for offset in range(0, len(sources), 2):
-            futures = [pool.submit(fetch_source_events, *source, start_time, end_time, ECal, ICalGLib, kind, default_timezone)
+            futures = [pool.submit(fetch_source_events, *source, start_time, end_time, ECal, ICalGLib, default_timezone)
                        for source in sources[offset:offset + 2]]
             for future in futures:
                 result, error = future.result()
                 failures += error == "unavailable"
                 limited |= bool(error)
-                if kind == "day":
-                    payload["events"].extend(result)
-                    payload["events"].sort(key=event_order)
-                    limited |= len(payload["events"]) > MAX_EVENTS
-                    del payload["events"][MAX_EVENTS:]
-                else:
-                    for key, day in result["dates"].items():
-                        for index in day["events"]:
-                            month.add(result["events"][index], [key])
-                        if not day["complete"]:
-                            month.incomplete([key])
-    if month:
-        if limited:
-            month.incomplete(month.payload["dates"], "error" if sources and failures == len(sources) else "partial")
-        for day in month.payload["dates"].values():
-            day["updatedAt"] = payload["updatedAt"]
-        month.payload["selectedCalendars"] = payload["selectedCalendars"]
-        month.payload["updatedAt"] = payload["updatedAt"]
-        return month.finish()
-    payload["state"] = "error" if sources and failures == len(sources) else "partial" if limited else "ok"
-    payload["complete"] = payload["state"] == "ok"
-    return payload
+                for key, day in result["dates"].items():
+                    for index in day["events"]:
+                        month.add(result["events"][index], [key])
+                    if not day["complete"]:
+                        month.incomplete([key])
+    if limited:
+        month.incomplete(month.payload["dates"], "error" if sources and failures == len(sources) else "partial")
+    for day in month.payload["dates"].values():
+        day["updatedAt"] = updated_at
+    month.payload["selectedCalendars"] = len(sources)
+    month.payload["updatedAt"] = updated_at
+    return month.finish()
 
 
 def encode(payload: Any) -> bytes:
@@ -358,9 +331,8 @@ def valid_payload(payload: Any) -> bool:
     if not isinstance(payload, dict) or set(payload) != {"kind", "date", "rangeEnd", "state", "events", "dates", "selectedCalendars", "updatedAt", "cached", "complete"}:
         return False
     try:
-        kind = payload["kind"]
         start, end = date.fromisoformat(payload["date"]), date.fromisoformat(payload["rangeEnd"])
-        if kind not in ("day", "month") or not 0 < (end - start).days <= (1 if kind == "day" else MAX_QUERY_DAYS):
+        if payload["kind"] != "month" or not 0 < (end - start).days <= MAX_QUERY_DAYS:
             return False
         if payload["state"] not in ("ok", "partial", "error", "missing") or type(payload["cached"]) is not bool or type(payload["complete"]) is not bool:
             return False
@@ -369,11 +341,9 @@ def valid_payload(payload: Any) -> bool:
         if type(payload["updatedAt"]) is not int or not 0 <= payload["updatedAt"] <= 253402300799:
             return False
         events, dates = payload["events"], payload["dates"]
-        if not isinstance(events, list) or len(events) > (MAX_EVENTS if kind == "day" else MAX_MONTH_EVENTS) or not isinstance(dates, dict) or len(dates) > MAX_QUERY_DAYS:
+        if not isinstance(events, list) or len(events) > MAX_MONTH_EVENTS or not isinstance(dates, dict) or len(dates) > MAX_QUERY_DAYS:
             return False
-        if kind == "day" and dates:
-            return False
-        if kind == "month" and set(dates) != {(start + timedelta(days=i)).isoformat() for i in range((end - start).days)}:
+        if set(dates) != {(start + timedelta(days=i)).isoformat() for i in range((end - start).days)}:
             return False
         for event in events:
             if not isinstance(event, dict) or set(event) != {"id", "title", "calendar", "color", "location", "allDay", "start", "end", "startDate", "endDate"}:
@@ -403,7 +373,7 @@ def valid_payload(payload: Any) -> bool:
                 return False
             if type(day["updatedAt"]) is not int or not 0 <= day["updatedAt"] <= 253402300799:
                 return False
-        return len(encode(payload)) <= (MAX_RESPONSE_BYTES if kind == "day" else MAX_MONTH_BYTES)
+        return len(encode(payload)) <= MAX_MONTH_BYTES
     except (TypeError, ValueError, KeyError, OverflowError):
         return False
 
@@ -412,8 +382,8 @@ def default_cache_path() -> Path:
     return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "foamy-clock" / "agenda-v3.json"
 
 
-def cache_key(kind: str, start: date, end: date) -> str:
-    return f"{kind}:{start}:{end}"
+def cache_key(start: date, end: date) -> str:
+    return f"month:{start}:{end}"
 
 
 @contextlib.contextmanager
@@ -474,15 +444,15 @@ def read_cache(path: Path | None = None) -> dict[str, Any]:
         views = payload.get("views")
         if payload.get("version") != CACHE_VERSION or payload.get("zone") != empty["zone"] or not isinstance(views, dict) or len(views) > MAX_CACHE_ENTRIES:
             return empty
-        if any(not valid_payload(view) or key != cache_key(view["kind"], date.fromisoformat(view["date"]), date.fromisoformat(view["rangeEnd"])) for key, view in views.items()):
+        if any(not valid_payload(view) or key != cache_key(date.fromisoformat(view["date"]), date.fromisoformat(view["rangeEnd"])) for key, view in views.items()):
             return empty
         return payload
     except (OSError, ValueError, TypeError, AttributeError, RecursionError):
         return empty
 
 
-def cached_view(kind: str, start: date, end: date, path: Path | None = None) -> dict[str, Any]:
-    payload = dict(read_cache(path)["views"].get(cache_key(kind, start, end), base_payload(kind, start, end)))
+def cached_view(start: date, end: date, path: Path | None = None) -> dict[str, Any]:
+    payload = dict(read_cache(path)["views"].get(cache_key(start, end), base_payload(start, end)))
     payload["cached"] = True
     return payload
 
@@ -496,11 +466,8 @@ def store_view(payload: dict[str, Any], path: Path | None = None) -> bool:
             return False
         cache = read_cache(path)
         views = cache["views"]
-        key = cache_key(payload["kind"], date.fromisoformat(payload["date"]), date.fromisoformat(payload["rangeEnd"]))
-        old = views.get(key)
-        # Preserve complete data when a refresh only saw part of the calendar.
-        if payload["kind"] == "day" and old and old["complete"] and not payload["complete"]:
-            return False
+        # merge_month has already kept complete cached dates over partial fresh ones.
+        key = cache_key(date.fromisoformat(payload["date"]), date.fromisoformat(payload["rangeEnd"]))
         views.pop(key, None)
         views[key] = payload
         while len(views) > MAX_CACHE_ENTRIES or len(encode(cache)) > MAX_CACHE_BYTES:
@@ -509,14 +476,14 @@ def store_view(payload: dict[str, Any], path: Path | None = None) -> bool:
     return True
 
 
-def touch_view(kind: str, start: date, end: date, path: Path | None = None) -> bool:
+def touch_view(start: date, end: date, path: Path | None = None) -> bool:
     """Move a cached view to the most-recently-used end, without rewriting its data.
 
     Only writes when the order changes, and re-reads under the lock, so a
     cached read can never put back an older snapshot over fresher data.
     """
     path = path or default_cache_path()
-    key = cache_key(kind, start, end)
+    key = cache_key(start, end)
     views = read_cache(path)["views"]
     if key not in views or next(reversed(views)) == key:
         return False
@@ -586,9 +553,6 @@ def merge_month(fresh, cached):
 
 
 def emit_view(payload):
-    if payload["kind"] == "day":
-        print(encode(payload).decode("utf-8"), flush=True)
-        return
     # Each line stays below the existing shell pipe limit. A month is at most
     # one header, ten 100-event chunks and a commit marker; apply it atomically.
     header = {**payload, "kind": "month-start", "events": []}
@@ -604,18 +568,13 @@ def emit_view(payload):
         print(raw.decode("utf-8"), flush=True)
 
 
-def refreshed_view(kind: str, start: date, end: date, path: Path | None = None) -> dict[str, Any]:
-    command = [sys.executable, str(Path(__file__).resolve()), "--worker", kind,
-               "--date", start.isoformat(), "--range-end", end.isoformat()]
-    fresh = run_bounded_worker(command, max_bytes=MAX_MONTH_BYTES if kind == "month" else MAX_RESPONSE_BYTES)
-    if fresh is None or fresh["kind"] != kind or fresh["date"] != start.isoformat() or fresh["rangeEnd"] != end.isoformat():
-        fresh = base_payload(kind, start, end, "error")
-    cached = cached_view(kind, start, end, path)
-    if kind == "month":
-        fresh = merge_month(fresh, cached)
-    elif fresh["state"] in ("partial", "error") and cached["complete"]:
-        cached["state"] = "partial"
-        fresh = cached
+def refreshed_view(start: date, end: date, path: Path | None = None) -> dict[str, Any]:
+    command = [sys.executable, str(Path(__file__).resolve()), "--worker",
+               "--range-start", start.isoformat(), "--range-end", end.isoformat()]
+    fresh = run_bounded_worker(command, max_bytes=MAX_MONTH_BYTES)
+    if fresh is None or fresh["date"] != start.isoformat() or fresh["rangeEnd"] != end.isoformat():
+        fresh = base_payload(start, end, "error")
+    fresh = merge_month(fresh, cached_view(start, end, path))
     try:
         store_view(fresh, path)
     except OSError:
@@ -626,51 +585,44 @@ def refreshed_view(kind: str, start: date, end: date, path: Path | None = None) 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--date", type=date.fromisoformat, default=date.today())
     parser.add_argument("--cached", action="store_true")
     parser.add_argument("--cache-only", action="store_true", help="refresh the bounded disk cache without sending event data to the shell")
     parser.add_argument("--max-age", type=int, default=0)
-    parser.add_argument("--range-start", type=date.fromisoformat)
-    parser.add_argument("--range-end", type=date.fromisoformat)
-    parser.add_argument("--worker", choices=("day", "month"), help=argparse.SUPPRESS)
+    parser.add_argument("--range-start", type=date.fromisoformat, required=True)
+    parser.add_argument("--range-end", type=date.fromisoformat, required=True)
+    parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     arguments = parser.parse_args()
+    start, end = arguments.range_start, arguments.range_end
+    if not 0 < (end - start).days <= MAX_QUERY_DAYS:
+        parser.error("range must contain 1-42 days")
     if arguments.worker:
         # Set this before importing GI: C allocations and recurrence expansion
         # are outside Python's collection budgets. No additional service needed.
         resource.setrlimit(resource.RLIMIT_AS, (WORKER_MEMORY_BYTES, WORKER_MEMORY_BYTES))
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
         try:
-            payload = load_view(arguments.worker, arguments.date, arguments.range_end)
+            payload = load_view(start, end)
         except Exception:
-            payload = base_payload(arguments.worker, arguments.date, arguments.range_end, "error")
+            payload = base_payload(start, end, "error")
         sys.stdout.buffer.write(encode(payload))
         return 0
-    if (arguments.range_start is None) != (arguments.range_end is None):
-        parser.error("range start and end must be provided together")
-    if arguments.range_start and not 0 < (arguments.range_end - arguments.range_start).days <= MAX_QUERY_DAYS:
-        parser.error("range must contain 1-42 days")
     # The bridge never imports GI. Disk reads, the worker's month response,
     # and every shell message have independent byte limits.
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-    views = [("month", arguments.range_start, arguments.range_end)] if arguments.range_start else [
-        ("day", arguments.date, arguments.date + timedelta(days=1))
-    ]
-    for kind, start, end in views:
-        cached = cached_view(kind, start, end)
-        age = datetime.now().timestamp() - cached["updatedAt"]
-        reusable = cached["state"] == "ok" and 0 <= age < min(86400, arguments.max_age)
-        payload = cached if arguments.cached or reusable else refreshed_view(kind, start, end)
-        if (arguments.cached or reusable) and payload["state"] in ("ok", "partial"):
-            try:
-                touch_view(kind, start, end)
-            except OSError:
-                pass  # Cache access-order maintenance does not invalidate saved data.
-        if not valid_payload(payload):
-            payload = base_payload(kind, start, end, "error")
-        if not arguments.cache_only:
-            emit_view(payload)
+    cached = cached_view(start, end)
+    age = datetime.now().timestamp() - cached["updatedAt"]
+    reusable = cached["state"] == "ok" and 0 <= age < min(86400, arguments.max_age)
+    payload = cached if arguments.cached or reusable else refreshed_view(start, end)
+    if (arguments.cached or reusable) and payload["state"] in ("ok", "partial"):
+        try:
+            touch_view(start, end)
+        except OSError:
+            pass  # Cache access-order maintenance does not invalidate saved data.
+    if not valid_payload(payload):
+        payload = base_payload(start, end, "error")
+    if not arguments.cache_only:
+        emit_view(payload)
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())
