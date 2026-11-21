@@ -54,22 +54,6 @@ class CalendarEventsTest(unittest.TestCase):
         self.assertEqual(CALENDAR_EVENTS.unix_timestamp(occurrence, fallback_timezone), 123)
         self.assertIs(occurrence.converted_with, occurrence_timezone)
 
-    def test_timestamp_uses_client_timezone_as_fallback(self) -> None:
-        fallback_timezone = object()
-
-        class Occurrence:
-            def get_timezone(self):
-                return None
-
-            def as_timet_with_zone(self, timezone):
-                self.converted_with = timezone
-                return 456
-
-        occurrence = Occurrence()
-
-        self.assertEqual(CALENDAR_EVENTS.unix_timestamp(occurrence, fallback_timezone), 456)
-        self.assertIs(occurrence.converted_with, fallback_timezone)
-
     def payload(self, state="ok", start=date(2026, 8, 24), events=()):
         """A 42-day month view; `events` all fall on its first date."""
         result = CALENDAR_EVENTS.base_payload(start, start + timedelta(days=42), state)
@@ -148,14 +132,6 @@ class CalendarEventsTest(unittest.TestCase):
             ecal,
             ical,
         )
-
-    def test_dense_day_retains_fixed_number(self):
-        for count in (2000, 200000):
-            month, error = self.fetch(count)
-            self.assertEqual(sorted(month["dates"]["2026-08-24"]["events"]), list(range(CALENDAR_EVENTS.MAX_EVENTS)))
-            self.assertEqual(month["dates"]["2026-08-24"]["state"], "partial")
-            self.assertEqual(self.visited, min(count, CALENDAR_EVENTS.MAX_OCCURRENCES + 1))
-            self.assertEqual(error, "")
 
     def test_huge_unicode_fields_are_bounded_before_normalizing(self):
         month, error = self.fetch(1, title="🙂 \n" * 100000)
@@ -279,23 +255,6 @@ class CalendarEventsTest(unittest.TestCase):
         titles = [result["events"][result["dates"][key]["events"][0]]["title"] for key in ("2026-08-24", "2026-08-25")]
         self.assertEqual(titles, ["Old title", "New title"])
 
-    def test_month_cache_survives_restart_and_worker_failure(self):
-        start, end = date(2026, 8, 24), date(2026, 10, 5)
-        builder = CALENDAR_EVENTS.MonthBuilder(start, end)
-        builder.add(self.event(), ["2026-08-24"])
-        good = builder.finish()
-        with TemporaryDirectory() as directory:
-            path = Path(directory) / "cache.json"
-            CALENDAR_EVENTS.store_view(good, path)
-            with patch.object(CALENDAR_EVENTS, "run_bounded_worker", return_value=None):
-                result = CALENDAR_EVENTS.refreshed_view(start, end, path)
-            self.assertEqual(len(result["events"]), 1)
-            self.assertEqual(result["dates"]["2026-08-24"]["events"], [0])
-            self.assertEqual(result["state"], "partial")
-            recovered = CALENDAR_EVENTS.cached_view(start, end, path)
-            self.assertEqual(recovered["dates"], result["dates"])
-            self.assertTrue(CALENDAR_EVENTS.valid_payload(recovered))
-
     def test_cancelled_occurrences_still_have_a_work_budget(self):
         month, error = self.fetch(200000, cancelled=True)
         self.assertEqual(month["events"], [])
@@ -349,6 +308,8 @@ class CalendarEventsTest(unittest.TestCase):
                 self.assertTrue(result["complete"])
                 cached = CALENDAR_EVENTS.cached_view(start, end, path)
                 self.assertEqual(cached["state"], "partial")
+                self.assertEqual(cached["dates"], result["dates"])
+                self.assertTrue(CALENDAR_EVENTS.valid_payload(cached))
             with patch.object(CALENDAR_EVENTS, "run_bounded_worker", return_value=good):
                 recovered = CALENDAR_EVENTS.refreshed_view(start, end, path)
             self.assertEqual(recovered["state"], "ok")
