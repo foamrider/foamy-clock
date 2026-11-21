@@ -7,4 +7,4 @@ const number = (value, decimals) => (decimals === undefined ? String(value) : Nu
 const scope = language => I18n.translator(language === 'no' || language === 'nb' ? no : en, en, number)
 function text(key, language, values) { return scope(language).t(key, values) }
 function plural(key, language, count, values) { return scope(language).tn(key, count, values) }
-module.exports = {text, plural, no, en, norwegian: no, nb: no}
+module.exports = {text, plural, no, en}
