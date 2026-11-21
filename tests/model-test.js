@@ -18,4 +18,9 @@ let current=ring[0];const seen=new Set()
 for (let i=0;i<ring.length;i++) { seen.add(current);current=M.nextClockFormat(ring,current) }
 assert.equal(seen.size,ring.length)
 assert.equal(current,ring[0])
+// Each row's week number is the ISO week of its Thursday, whatever the week start.
+for (const start of [0,1,6]) assert.deepEqual(M.monthGrid(2021,0,start,'').map(w=>w.week),[53,1,2,3,4,5],`week start ${start}`)
+assert.equal(M.monthGrid(2024,1,1,'').flatMap(w=>w.days).filter(d=>d.inMonth).length,29)
+// The week-start toggle flips Monday and Sunday; any other start lands on Monday.
+assert.deepEqual([1,0,6].map(M.toggledWeekStart),[0,1,1])
 console.log('ok — ISO boundaries, month grids, format cycling')
