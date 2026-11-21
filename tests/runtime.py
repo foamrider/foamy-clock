@@ -8,15 +8,15 @@ runs: its disk cache is seeded with today's month (two events), and a fake
 installed, so a refresh always gives an error or partial month.
 Usage: tests/runtime.py [--language en|no]
 
-A run that starts within a minute of midnight can seed "today" for the day
-before; the populated step then times out.
+The seeded events are on the day this process sees and the shell reads its
+own clock, so no run starts when it could cross local midnight: it waits.
 
 The 4.5 host is FOAMY_HOST_45, else $OMARCHY_TEST_ROOT/shell, else the
 installed /usr/share/omarchy/shell.
 """
 
 import argparse
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 import importlib.util
 import os
 import sys
@@ -107,7 +107,25 @@ def seed_cache(cache_home):
             raise SystemExit(f"runtime.py: the helper refused the seeded month from {start}")
 
 
+def wait_clear_of_midnight(now=None):
+    """Sleep past local midnight when a run that starts now could cross it.
+
+    A run is limited to 90 s. One that crossed midnight would seed its events
+    on the day before the day the shell shows, and fail on correct code.
+    Returns the seconds it waited.
+    """
+    now = now or datetime.now()
+    midnight = datetime.combine(now.date() + timedelta(days=1), datetime.min.time())
+    left = (midnight - now).total_seconds()
+    if left >= 120:
+        return 0
+    print(f"runtime.py: waiting {left:.0f} s for midnight to pass, so that the seeded day stays today", flush=True)
+    time.sleep(left + 1)
+    return left + 1
+
+
 def run(host, language):
+    wait_clear_of_midnight()
     shell = (Path(__file__).parent / "runtime/Runtime.qml").read_text()
     test = harness.Run(host, shell, plugin=ROOT, language=language, prefix="foamy-clock-runtime-", fakebin=FAKEBIN)
     test.env["FOAMY_LANG"] = language
