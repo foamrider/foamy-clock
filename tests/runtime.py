@@ -2,18 +2,25 @@
 """Offscreen runtime test of the real widget on Omarchy 4.5.
 
 Uses the foamy-kit preview harness (temp HOME/XDG, no Wayland/Hyprland,
-software renderer; 4.5 QML is loaded, never its scripts). The session bus is
-the harness's private bus, which has no service files, so the agenda worker
-can neither reach nor activate a live EDS.
+software renderer; 4.5 QML is loaded, never its scripts). The real helper
+runs: its disk cache is seeded with today's month (two events), and a fake
+`gi` package makes every Evolution worker fail, whatever the machine has
+installed, so a refresh always gives an error or partial month.
 Usage: tests/runtime.py [--language en|no]
+
+The seeded events are on the day this process sees and the shell reads its
+own clock, so no run starts when it could cross local midnight: it waits.
 
 The 4.5 host is FOAMY_HOST_45, else $OMARCHY_TEST_ROOT/shell, else the
 installed /usr/share/omarchy/shell.
 """
 
 import argparse
+from datetime import date, datetime, timedelta
+import importlib.util
 import os
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,19 +32,110 @@ if not os.environ.get("FOAMY_HOST_45"):
 sys.path.insert(0, str(KIT / "preview"))
 import harness  # noqa: E402
 
-# The calendar shortcut's host commands: only "foamy-test-calendar" is
-# installed, and a launch is recorded in the run's out directory instead.
+# The calendar shortcut's host commands: every check is logged, only
+# "foamy-test-calendar" is installed, and a launch is recorded in the run's
+# out directory instead.
 FAKEBIN = {
-    "omarchy-cmd-present": '#!/bin/sh\n[ "$#" -eq 1 ] && [ "$1" = foamy-test-calendar ]\n',
+    "omarchy-cmd-present": (
+        '#!/bin/sh\nprintf "%s\\n" "$*" >>"$FOAMY_OUT/present"\n[ "$#" -eq 1 ] && [ "$1" = foamy-test-calendar ]\n'
+    ),
     "omarchy-launch-or-focus": '#!/bin/sh\nprintf "%s\\n" "$*" >>"$FOAMY_OUT/launched"\n',
 }
+# Put first on the helper's PYTHONPATH: the worker's `import gi` finds this.
+FAKE_GI = 'def require_version(*_):\n    raise ValueError("no Evolution Data Server in tests")\n'
+
+
+def helper():
+    spec = importlib.util.spec_from_file_location("calendar_events", ROOT / "calendar-events.py")
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def seed_cache(cache_home):
+    """Today's month for every week start, as the helper itself stores it.
+
+    The cache records the zone it was cut in. The harness passes this
+    process's TZ to the shell, so the helper there reads the same zone.
+    """
+    calendar = helper()
+    today = date.today()
+    now = int(time.time())
+    first = today.replace(day=1)
+    path = Path(cache_home) / "foamy-clock" / f"agenda-v{calendar.CACHE_VERSION}.json"
+    for week_start in range(7):  # JS numbering: 0 is Sunday
+        start = first - timedelta(days=((first.weekday() + 1) % 7 - week_start) % 7)
+        month = calendar.MonthBuilder(start, start + timedelta(days=42))
+        common = {"calendar": "Work", "color": "#7aa2f7"}
+        # Added timed first, so the all-day-first order comes from the helper's sort.
+        # The location carries markup, which the popup must show as text.
+        month.add(
+            {
+                **common,
+                "id": "work:standup",
+                "title": "Standup",
+                "location": "<b>Room 4</b>",
+                "allDay": False,
+                "start": now - 60,
+                "end": now + 7200,
+                "startDate": "",
+                "endDate": "",
+            },
+            [today.isoformat()],
+        )
+        month.add(
+            {
+                **common,
+                "id": "work:offsite",
+                "title": "Offsite",
+                "location": "",
+                "allDay": True,
+                "start": 0,
+                "end": 0,
+                "startDate": today.isoformat(),
+                "endDate": (today + timedelta(days=1)).isoformat(),
+            },
+            [today.isoformat()],
+        )
+        payload = month.finish()
+        payload["selectedCalendars"] = 1
+        payload["updatedAt"] = now
+        for day in payload["dates"].values():
+            day["updatedAt"] = now
+        if not calendar.store_view(payload, path):
+            raise SystemExit(f"runtime.py: the helper refused the seeded month from {start}")
+
+
+def wait_clear_of_midnight(now=None):
+    """Sleep past local midnight when a run that starts now could cross it.
+
+    A run is limited to 90 s. One that crossed midnight would seed its events
+    on the day before the day the shell shows, and fail on correct code.
+    Returns the seconds it waited.
+    """
+    now = now or datetime.now()
+    midnight = datetime.combine(now.date() + timedelta(days=1), datetime.min.time())
+    left = (midnight - now).total_seconds()
+    if left >= 120:
+        return 0
+    print(f"runtime.py: waiting {left:.0f} s for midnight to pass, so that the seeded day stays today", flush=True)
+    time.sleep(left + 1)
+    return left + 1
 
 
 def run(host, language):
+    wait_clear_of_midnight()
     shell = (Path(__file__).parent / "runtime/Runtime.qml").read_text()
     test = harness.Run(host, shell, plugin=ROOT, language=language, prefix="foamy-clock-runtime-", fakebin=FAKEBIN)
     test.env["FOAMY_LANG"] = language
-    test.run(timeout=30)
+    fake_gi = test.base / "fakegi" / "gi"
+    fake_gi.mkdir(parents=True)
+    (fake_gi / "__init__.py").write_text(FAKE_GI)
+    test.env["PYTHONPATH"] = str(fake_gi.parent)
+    seed_cache(test.env["XDG_CACHE_HOME"])
+    # Many steps, each with its own 10 s limit.
+    test.run(timeout=90)
     result = [line for line in test.log.splitlines() if "FOAMY RESULT" in line]
     # Every host command the widget runs here has a FAKEBIN stand-in; the
     # harness stubs any other omarchy* command and logs it.
