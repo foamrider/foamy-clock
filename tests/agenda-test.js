@@ -67,8 +67,7 @@ function service(inputs = {}) {
     agendaReset() {},
     get now() { return new FixedDate() },
     // QML bindings node cannot evaluate, repeated from ClockService.qml:
-    // agendaActive (line 34), backgroundActive (line 42), agendaRefreshing
-    // (line 99) and agendaRangeKey (line 104).
+    // agendaActive, backgroundActive, agendaRefreshing and agendaRangeKey.
     get agendaActive() { return this.activated && this.agendaEnabled },
     get backgroundActive() { return this.agendaEnabled && this.backgroundRefresh && !this.demanded },
     get agendaRefreshing() { return agendaProcess.running && !this.agendaPrefetch },

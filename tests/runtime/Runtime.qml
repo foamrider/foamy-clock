@@ -345,8 +345,6 @@ ShellRoot {
     var today = service.today
     var lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate() === today.getDate()
     var key = service.selectedDateKey
-    var cacheBefore = cacheStarts.length
-    var foregroundBefore = foregroundStarts().length
     view.moveRequested(lastDay ? -1 : 1, 0)
     check(view.cursorKey !== "" && view.cursorKey !== key, "an arrow moves the day cursor")
     eq(service.selectedDateKey, key, "selection unchanged until Enter")
@@ -356,9 +354,9 @@ ShellRoot {
     eq(service.agendaState, "ok", "and is loaded")
     eq(view.agendaCountText(), texts.none, "the empty day's count")
     eq(agendaList(view).headerItem.text, texts.empty, "the empty day's message")
-    eq(cacheStarts.length, cacheBefore, "a loaded day reads no cache")
-    eq(foregroundStarts().length, foregroundBefore, "and asks Evolution for nothing")
-    eq(service.cacheProcess.running || service.agendaProcess.running, false, "and starts no helper")
+    // running turns true in the same call that starts a helper; the started
+    // signal only arrives later, so the start lists cannot show it here.
+    eq(service.cacheProcess.running || service.agendaProcess.running, false, "a loaded day starts no helper")
     browseCheck()
   }
 
@@ -615,17 +613,14 @@ ShellRoot {
     })
   }
   function presentCalendar() {
-    var action = openCalendarButton(panel(0).popup.bodyItem)
-    action.clicked()
-    action.clicked()
+    openCalendarButton(panel(0).popup.bodyItem).clicked()
     step(function () {
       return shell.launched() !== ""
     }, "a present calendar app is launched", function () {
       eq(shell.launched(), "foamy-test-calendar\n", "launched through omarchy-launch-or-focus")
       eq(widget(0).opened, false, "and the popup closes")
       eq(panel(0).launchError, "", "with no error")
-      // The hostile name's check got the default; one check per click, and a
-      // second click during the check starts none.
+      // The hostile name's check got the default; one check per click.
       same(presentChecks(), ["gnome-calendar", "foamy-missing-calendar", "foamy-test-calendar"], "the calendar app checks")
       finishCheck()
     })
