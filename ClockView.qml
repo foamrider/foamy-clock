@@ -154,7 +154,7 @@ PanelKeyCatcher {
       return FoamyI18n.t("Calendar data is unavailable")
     if (service.agendaState === "partial")
       return FoamyI18n.t("Some events may be missing. Open calendar for the full view.")
-    return service.agendaMessage
+    return ""
   }
 
   function agendaCountText() {

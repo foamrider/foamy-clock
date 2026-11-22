@@ -59,8 +59,8 @@ function service(inputs = {}) {
     today: new Date(2026, 8, 27), selectedDateKey: '2026-08-31',
     agendaRangeStartKey: SEPTEMBER.start, agendaRangeEndKey: SEPTEMBER.end,
     agendaEvents: [], calendarDates: {}, monthView: null, pendingMonth: null, pendingMonthBytes: 0, pendingMonthChunks: 0,
-    agendaState: 'loading', agendaMessage: '', overviewState: 'missing', agendaDateKey: '', selectedCalendars: 0,
-    lastAgendaRefreshMs: 0, agendaCached: false, agendaProcessRangeStartKey: '', agendaProcessRangeEndKey: '',
+    agendaState: 'loading', selectedCalendars: 0,
+    lastAgendaRefreshMs: 0, agendaProcessRangeStartKey: '', agendaProcessRangeEndKey: '',
     cacheProcessRangeStartKey: '', cacheProcessRangeEndKey: '', agendaRequestCancelled: false, agendaPrefetch: false,
     agendaRefreshPending: false, prefetchAttempts: {}, agendaForceRefresh: false, agendaPayloadApplied: false,
     lastAgendaRangeRefreshMs: 0, lastAgendaRangeKey: '', agendaRefreshIntervalMs: INTERVAL,
@@ -116,12 +116,12 @@ function wire(payload) {
   return lines.map(line => JSON.stringify(line))
 }
 
-function apply(fx, line, fromCache = false) {
-  return fx.context.applyAgendaPayload(line, fromCache, fx.root.agendaRangeStartKey, fx.root.agendaRangeEndKey)
+function apply(fx, line) {
+  return fx.context.applyAgendaPayload(line, fx.root.agendaRangeStartKey, fx.root.agendaRangeEndKey)
 }
 
-function deliver(fx, payload, fromCache = false) {
-  return wire(payload).map(line => apply(fx, line, fromCache))
+function deliver(fx, payload) {
+  return wire(payload).map(line => apply(fx, line))
 }
 
 test('a month shows only after month-end; one dot per calendar, at most five', () => {
@@ -178,7 +178,7 @@ test('partial status belongs to its date, also when read from disk', () => {
   const payload = month(fx)
   payload.state = 'partial'
   payload.dates['2026-08-31'].state = 'partial'
-  assert.equal(deliver(fx, payload, true).at(-1), true)
+  assert.equal(deliver(fx, payload).at(-1), true)
   assert.equal(fx.footer(), 'Partial update · open calendar')
   fx.root.selectedDateKey = '2026-09-01'
   fx.root.showSelectedDay()
@@ -192,7 +192,7 @@ test('partial status belongs to its date, also when read from disk', () => {
 // "Updated 1283 minutes ago"), and "Updating…" while Evolution is asked.
 test('the footer ages in hours and says Updating… while Evolution is asked', () => {
   const fx = service()
-  deliver(fx, month(fx, {updatedAt: Math.floor(fx.nowMs() / 1000) - 1283 * 60}), true)
+  deliver(fx, month(fx, {updatedAt: Math.floor(fx.nowMs() / 1000) - 1283 * 60}))
   assert.equal(fx.footer(), 'Updated 21 hours ago')
   fx.root.refreshAgenda(true)
   assert.equal(fx.agendaProcess.running, true)
@@ -371,7 +371,7 @@ test('a refresh asked for during the disk read runs when the read ends', () => {
   assert.equal(fx.cacheProcess.running, true)
   fx.root.refreshAgenda(true)
   assert.equal(fx.agendaProcess.starts, 0)
-  deliver(fx, month(fx), true)
+  deliver(fx, month(fx))
   fx.cacheProcess.running = false
   fx.root.refreshAgenda(false) // cacheProcess.onExited
   assert.equal(fx.agendaProcess.running, true)
