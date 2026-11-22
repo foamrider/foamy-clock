@@ -1,4 +1,5 @@
 import QtQuick
+import QtTest
 import Quickshell
 import Quickshell.Io
 import qs.Commons
@@ -16,6 +17,7 @@ import "plugin/kit/FoamyIpcResolver.js" as IpcResolver
 //  2. the bar label (format, ISO week, clock glyph split, vertical lines);
 //  3. a click opens bar 1 on the saved events (order, count, ongoing event,
 //     details shown as plain text, one dot, footer, no Evolution request);
+//     a long event's tooltip wraps in its capped box;
 //  4. a key on an empty day selects it without a helper run;
 //  5. month browsing and arrows (the cursor stays in the shown month), and a
 //     month Evolution cannot serve shows an error;
@@ -131,6 +133,33 @@ ShellRoot {
         })
       onSave: function (key, value) {
         saves = saves.concat([[key, value]])
+      }
+    }
+    // Real key and mouse events, through the window they are sent to.
+    Item {
+      TestEvent {
+        id: ev
+      }
+    }
+  }
+
+  // The agenda alone, for the checks that hover it: offscreen the bar popup
+  // gets no window, so its tooltips never open. A screen wide, as the
+  // panel's own window is.
+  FloatingWindow {
+    id: agendaWindow
+    visible: false
+    implicitWidth: 1600
+    implicitHeight: 1000
+    color: "black"
+    Loader {
+      id: agendaView
+      active: false
+      sourceComponent: Component {
+        Clock.ClockView {
+          settings: shell.barSettings
+          opened: true
+        }
       }
     }
   }
@@ -364,7 +393,60 @@ ShellRoot {
     // click has nothing to wait for and must start nothing.
     step(function () {
       return !service.agendaProcess.running && !service.cacheProcess.running
-    }, "the prefetch of the months ahead ends", emptyDayCheck)
+    }, "the prefetch of the months ahead ends", tooltipCheck)
+  }
+
+  // A long title and a meeting link as the location (runtime.py seeds them
+  // two days from today, in this month): hovered in the agenda's own window,
+  // the event's tooltip wraps them in its 320 px box instead of growing as
+  // wide as its text.
+  function toolTipOf(item) {
+    return Array.prototype.filter.call(item.data, d => d.delay !== undefined && typeof d.text === "string")[0] || null
+  }
+  function tooltipCheck() {
+    var service = Clock.ClockService
+    agendaWindow.visible = true
+    agendaView.active = true
+    step(function () {
+      return agendaView.item !== null && agendaView.item.Window.window !== null
+    }, "the agenda has a window of its own", function () {
+      var view = agendaView.item
+      view.moveRequested(service.today.getDate() > 2 ? -2 : 2, 0)
+      view.activateRequested()
+      var row = function () {
+        var list = agendaList(view)
+        list.forceLayout()
+        return service.agendaEvents.length === 1 ? find(list.contentItem, it => it.agendaStatus !== undefined && it.modelData.title === service.agendaEvents[0].title) : null
+      }
+      step(function () {
+        if (row() === null)
+          return false
+        // Sent again while waiting: a move before the row is laid out is lost.
+        ev.mouseMove(row(), 20, 20, -1, Qt.NoButton, Qt.NoModifier)
+        var tip = toolTipOf(row())
+        return tip !== null && tip.opened
+      }, "hovering the long event opens its tooltip", function () {
+        var tip = toolTipOf(row())
+        var cap = Style.space(320)
+        var title = service.agendaEvents[0].title
+        var inside = function () {
+          var text = tip.contentItem
+          return tip.width <= cap + 0.5 && text.contentWidth + text.leftPadding + text.rightPadding <= tip.width + 0.5
+        }
+        wait.waitFor(inside, 2000, function (ok) {
+          check(tip.implicitContentWidth > cap, "the long event's text is wider than the cap: " + tip.implicitContentWidth)
+          check(ok, "the tooltip wraps the long title and link inside its " + cap + " px box: " + tip.width + " px wide, " + tip.contentItem.contentWidth + " px of text")
+          eq(String(tip.text).split("\n")[0], title, "the tooltip shows the whole title")
+          ev.mouseMove(view, 5, 5, -1, Qt.NoButton, Qt.NoModifier)
+          view.textKey("t", 0)
+          agendaView.active = false
+          agendaWindow.visible = false
+          step(function () {
+            return service.selectedDateIsToday && service.agendaEvents.length === 2 && !service.agendaLoading
+          }, "back to today shows the saved events again", emptyDayCheck)
+        })
+      })
+    })
   }
 
   // 4. A key moves the cursor; Enter selects an empty day of the loaded month.

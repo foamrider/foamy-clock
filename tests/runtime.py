@@ -3,9 +3,10 @@
 
 Uses the foamy-kit preview harness (temp HOME/XDG, no Wayland/Hyprland,
 software renderer; 4.5 QML is loaded, never its scripts). The real helper
-runs: its disk cache is seeded with today's month (two events), and a fake
-`gi` package makes every Evolution worker fail, whatever the machine has
-installed, so a refresh always gives an error or partial month.
+runs: its disk cache is seeded with today's month (two events today, one
+with a long title two days away), and a fake `gi` package makes every
+Evolution worker fail, whatever the machine has installed, so a refresh
+always gives an error or partial month.
 A first, shorter run (runtime/Teardown.qml) quits the shell during a month
 refresh whose worker hangs, and checks that the bridge and worker end too.
 A second one kills the shell in the same state, as a crash would, and checks
@@ -76,6 +77,12 @@ def helper():
     return module
 
 
+def long_event_day(today):
+    """The day of the long event: two days from today, in today's month,
+    and not the day after (or before) today, which the scene shows empty."""
+    return today - timedelta(days=2) if today.day > 2 else today + timedelta(days=2)
+
+
 def seed_cache(cache_home):
     """Today's month for every week start, as the helper itself stores it.
 
@@ -86,6 +93,7 @@ def seed_cache(cache_home):
     today = date.today()
     now = int(time.time())
     first = today.replace(day=1)
+    long_day = long_event_day(today)
     path = Path(cache_home) / "foamy-clock" / f"agenda-v{calendar.CACHE_VERSION}.json"
     for week_start in range(7):  # JS numbering: 0 is Sunday
         start = first - timedelta(days=((first.weekday() + 1) % 7 - week_start) % 7)
@@ -120,6 +128,24 @@ def seed_cache(cache_home):
                 "endDate": (today + timedelta(days=1)).isoformat(),
             },
             [today.isoformat()],
+        )
+        # A long title, and a meeting link (one word, no spaces) as the
+        # location: the event's tooltip must wrap them in its capped box.
+        month.add(
+            {
+                **common,
+                "id": "work:planning",
+                "title": "Quarterly planning with the platform, design and support teams: "
+                "the roadmap for next year, the budget, hiring and a look back at the autumn releases",
+                "location": "https://meet.example.com/l/meetup-join/19%3ameeting_Zm9hbXktY2xvY2stbG9uZy1saW5r"
+                "%40thread.v2/0?context=foamy-clock",
+                "allDay": True,
+                "start": 0,
+                "end": 0,
+                "startDate": long_day.isoformat(),
+                "endDate": (long_day + timedelta(days=1)).isoformat(),
+            },
+            [long_day.isoformat()],
         )
         payload = month.finish()
         payload["selectedCalendars"] = 1
