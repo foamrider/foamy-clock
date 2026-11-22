@@ -8,6 +8,8 @@ runs: its disk cache is seeded with today's month (two events), and a fake
 installed, so a refresh always gives an error or partial month.
 A first, shorter run (runtime/Teardown.qml) quits the shell during a month
 refresh whose worker hangs, and checks that the bridge and worker end too.
+A second one kills the shell in the same state, as a crash would, and checks
+that the real `timeout` wrapper, the bridge and the worker end.
 Usage: tests/runtime.py [--language en|no]
 
 The seeded events are on the day this process sees and the shell reads its
@@ -209,11 +211,49 @@ def teardown(host):
     return ok
 
 
+def crash(host):
+    """The shell dies during a month refresh without stopping its helper
+    (SIGKILL, as a crash): the real wrapper, the bridge and the worker go too."""
+    shell = (Path(__file__).parent / "runtime/Teardown.qml").read_text()
+    test = harness.Run(host, shell, plugin=ROOT, prefix="foamy-clock-crash-", fakebin=FAKEBIN)
+    fake_gi = test.base / "fakegi" / "gi"
+    fake_gi.mkdir(parents=True)
+    (fake_gi / "__init__.py").write_text(HANGING_GI)
+    test.env["PYTHONPATH"] = str(fake_gi.parent)
+    test.env["FOAMY_TEARDOWN"] = "crash"
+    record = Path(test.env["FOAMY_OUT"]) / "worker"
+    pids = []
+    left = []
+    test.start()
+    try:
+        if test.wait_for_log("FOAMY WORKER RUNNING", timeout=30) and record.exists():
+            pids = [int(pid) for pid in record.read_text().split()]
+            # The bridge's parent is the `timeout` wrapper.
+            pids.append(int(Path(f"/proc/{pids[1]}/stat").read_text().rsplit(")", 1)[1].split()[1]))
+            # Only the shell itself: `timeout` keeps the helpers in a process
+            # group of their own, which the harness's group kill never reaches.
+            os.kill(test.process.pid, signal.SIGKILL)
+            test.process.wait()
+            harness.wait_for(lambda: not any(alive(pid) for pid in pids), timeout=10)
+            left = [pid for pid in pids if alive(pid)]
+    finally:
+        for pid in left:
+            os.kill(pid, signal.SIGKILL)
+        test.stop()
+    ok = len(pids) == 3 and not left and not test.failures()
+    print(f"{'PASS' if ok else 'FAIL'} {host} crash: worker, bridge and wrapper {pids}, left running {left}")
+    if not ok:
+        print("\n".join(test.failures() or test.log.splitlines()[-30:]))
+    test.cleanup()
+    return ok
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--language", default=None, choices=("en", "no"))
     args = parser.parse_args()
     ok = teardown("4.5")
+    ok &= crash("4.5")
     for language in [args.language] if args.language else ["en", "no"]:
         ok &= run("4.5", language)
     return 0 if ok else 1

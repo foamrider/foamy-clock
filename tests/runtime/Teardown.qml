@@ -9,6 +9,8 @@ import "plugin" as Clock
 // on, as when Quickshell's kill lands before timeout forwards anything. This
 // scene starts the refresh, waits for the worker and quits; runtime.py then
 // checks that no helper process of the refresh is left.
+// With FOAMY_TEARDOWN=crash the scene does not quit: runtime.py kills the
+// shell itself, as a crash would, with the real `timeout` wrapper.
 ShellRoot {
   id: shell
 
@@ -28,6 +30,10 @@ ShellRoot {
       workerFile.reload()
       return workerFile.text() !== "" && Clock.ClockService.agendaProcess.running
     }, 10000, function (ok) {
+      if (ok && Quickshell.env("FOAMY_TEARDOWN") === "crash") {
+        console.log("FOAMY WORKER RUNNING")
+        return
+      }
       console.log(ok ? "FOAMY DONE" : "FOAMY FAIL the month refresh did not reach its worker")
       Qt.quit()
     })

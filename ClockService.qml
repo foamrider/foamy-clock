@@ -508,7 +508,10 @@ QtObject {
   }
 
   property Process agendaProcess: Process {
-    command: ["timeout",
+    // `timeout` keeps the helper in a process group of its own. If the shell
+    // dies without stopping it (a crash), setpriv's parent-death signal makes
+    // timeout pass SIGTERM on to the bridge and its worker.
+    command: ["setpriv", "--pdeathsig", "TERM", "timeout",
       // One month worker has a 45-second deadline; also bound the bridge.
       "55s", "nice", "-n", "10", "python3", root.helperPath, "--range-start", root.agendaProcessRangeStartKey, "--range-end", root.agendaProcessRangeEndKey, "--max-age", String(root.agendaForceRefresh ? 0 : root.agendaRefreshIntervalMs / 1000)].concat(root.agendaPrefetch ? ["--cache-only"] : [])
     stdout: SplitParser {
