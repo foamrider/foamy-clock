@@ -161,5 +161,12 @@ python3 "$FOAMY_KIT/preview/i18n_runtime.py" .   # the catalogs in a live shell
 The runtime test uses the installed 4.5 shell unless `FOAMY_HOST_45` (a `shell`
 directory) or `OMARCHY_TEST_ROOT` (an Omarchy tree) names another.
 
+Two of the helper's Python tests use the real Evolution Data Server and
+libical libraries (`python-gobject`, `evolution-data-server`) and are skipped
+where those are missing. The CI workflow installs neither, so these two run
+only on a machine that has them, such as the Omarchy host. One of them holds
+that an unreachable Evolution registry fails the month instead of reading as
+"No calendars selected".
+
 `preview/Preview.qml` holds mock states for the foamy-kit preview harness
 (`foamy-kit/preview/render.py`).
