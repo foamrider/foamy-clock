@@ -11,15 +11,19 @@ import "plugin" as Clock
 // checks that no helper process of the refresh is left.
 // With FOAMY_TEARDOWN=crash the scene does not quit: runtime.py kills the
 // shell itself, as a crash would, with the real `timeout` wrapper.
+// With FOAMY_TEARDOWN=startup the scene quits as soon as the bridge has
+// started, while runtime.py holds it in Python's start-up.
 ShellRoot {
   id: shell
+  readonly property bool startup: Quickshell.env("FOAMY_TEARDOWN") === "startup"
 
   FoamyWait {
     id: wait
   }
   FileView {
     id: workerFile
-    path: Quickshell.env("FOAMY_OUT") + "/worker"
+    // The pid file of the worker, or in start-up mode the bridge's.
+    path: Quickshell.env("FOAMY_OUT") + (shell.startup ? "/starting" : "/worker")
     blockLoading: true
     printErrors: false
   }
@@ -34,7 +38,7 @@ ShellRoot {
         console.log("FOAMY WORKER RUNNING")
         return
       }
-      console.log(ok ? "FOAMY DONE" : "FOAMY FAIL the month refresh did not reach its worker")
+      console.log(ok ? "FOAMY DONE" : "FOAMY FAIL the month refresh did not reach its " + (shell.startup ? "bridge" : "worker"))
       Qt.quit()
     })
   }

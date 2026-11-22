@@ -10,7 +10,9 @@ always gives an error or partial month.
 A first, shorter run (runtime/Teardown.qml) quits the shell during a month
 refresh whose worker hangs, and checks that the bridge and worker end too.
 A second one kills the shell in the same state, as a crash would, and checks
-that the real `timeout` wrapper, the bridge and the worker end.
+that the real `timeout` wrapper, the bridge and the worker end. A third
+quits the shell while the bridge is still starting (held in Python's
+start-up), and checks that the bridge ends too.
 Usage: tests/runtime.py [--language en|no]
 
 The seeded events are on the day this process sees and the shell reads its
@@ -68,6 +70,18 @@ SILENT_TIMEOUT = """#!/usr/bin/env python3
 import os, subprocess, sys
 os.setpgid(0, 0)
 sys.exit(subprocess.call(sys.argv[2:]))
+"""
+# For the start-up run, beside the fake `gi`: Python imports sitecustomize
+# while it starts, before the helper's main(). The month refresh's bridge
+# (not the cache read, the worker or the fake `timeout`) writes its pid to
+# $FOAMY_OUT/starting and stays there (bounded), as a slow start would.
+SLOW_START = """import os, sys, time
+if os.path.basename(sys.argv[0]) == "calendar-events.py" and not {"--cached", "--worker"} & set(sys.argv):
+    path = os.environ["FOAMY_OUT"] + "/starting"
+    with open(path + ".tmp", "w") as handle:
+        handle.write(f"{os.getpid()}\\n")
+    os.replace(path + ".tmp", path)
+    time.sleep(30)
 """
 
 
@@ -276,12 +290,43 @@ def crash(host):
     return ok
 
 
+def startup(host):
+    """The shell quits while the month refresh's bridge is still starting,
+    before its own code runs, with the `timeout` wrapper passing no signal
+    on: the bridge ends with the wrapper all the same."""
+    shell = (Path(__file__).parent / "runtime/Teardown.qml").read_text()
+    fakebin = {**FAKEBIN, "timeout": SILENT_TIMEOUT}
+    test = harness.Run(host, shell, plugin=ROOT, prefix="foamy-clock-startup-", fakebin=fakebin)
+    site = test.base / "fakegi"
+    (site / "gi").mkdir(parents=True)
+    (site / "gi" / "__init__.py").write_text(FAKE_GI)
+    (site / "sitecustomize.py").write_text(SLOW_START)
+    test.env["PYTHONPATH"] = str(site)
+    test.env["FOAMY_TEARDOWN"] = "startup"
+    test.run(timeout=30)
+    record = Path(test.env["FOAMY_OUT"]) / "starting"
+    pids = [int(pid) for pid in record.read_text().split()] if record.exists() else []
+    left = []
+    if pids:
+        harness.wait_for(lambda: not any(alive(pid) for pid in pids), timeout=10)
+        left = [pid for pid in pids if alive(pid)]
+    for pid in left:
+        os.kill(pid, signal.SIGKILL)
+    ok = test.ok and len(pids) == 1 and not left
+    print(f"{'PASS' if ok else 'FAIL'} {host} startup: bridge {pids}, left running {left}")
+    if not test.ok:
+        print("\n".join(test.failures() or test.log.splitlines()[-30:]))
+    test.cleanup()
+    return ok
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--language", default=None, choices=("en", "no"))
     args = parser.parse_args()
     ok = teardown("4.5")
     ok &= crash("4.5")
+    ok &= startup("4.5")
     for language in [args.language] if args.language else ["en", "no"]:
         ok &= run("4.5", language)
     return 0 if ok else 1
