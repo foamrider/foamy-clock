@@ -25,9 +25,9 @@ import "plugin/kit/FoamyIpcResolver.js" as IpcResolver
 //  7. a click closes bar 1; an inline save keeps the other settings;
 //  8. one IPC handler for three bars and each of its functions; the bar
 //     button's right and middle clicks;
-//  9. the settings page: a refused calendar app typed into its field, the
-//     refresh dropdown saves and follows the setting, the agenda switch, an
-//     invalid value, Esc;
+//  9. the settings page: a refused calendar app typed into its field, a
+//     refused custom date locale, the refresh dropdown saves and follows the
+//     setting, the agenda switch, an invalid value, Esc;
 // 10. the calendar shortcut: a hostile stored name, a missing app, a present
 //     app (fake omarchy-cmd-present and omarchy-launch-or-focus);
 // 11. every helper run's arguments were accepted, and the first background
@@ -129,7 +129,8 @@ ShellRoot {
       property var saves: []
       anchors.fill: parent
       settings: ({
-          calendarApp: "foamy-test-calendar"
+          calendarApp: "foamy-test-calendar",
+          locale: "de_DE"
         })
       onSave: function (key, value) {
         saves = saves.concat([[key, value]])
@@ -674,8 +675,66 @@ ShellRoot {
         }, "the focus leaves the calendar app field again", function () {
           same(focusPage.saves, [["calendarApp", "evolution"]], "a valid calendar app is saved on focus-out")
           eq(app.error, "", "with no error")
-          focusWindow.visible = false
-          settingsCheck()
+          customLocaleCheck()
+        })
+      })
+    })
+  }
+  // Whether a visible text under `item` reads `text`.
+  function shows(item, text) {
+    return findAll(item, it => it.visible && it.textFormat !== undefined && it.text === text).length > 0
+  }
+  // Focuses `editor`, selects its text and types `text` over it, with real keys.
+  function typeOver(editor, text, label, then) {
+    editor.focusInput()
+    step(function () {
+      return editor.inputActiveFocus
+    }, label, function () {
+      ev.keyClick(Qt.Key_A, Qt.ControlModifier, -1)
+      for (var i = 0; i < text.length; i++)
+        ev.keyClickChar(text.charAt(i), Qt.NoModifier, -1)
+      then()
+    })
+  }
+  // The custom date locale editor: a locale the schema refuses ("de-DE") is
+  // never sent to be saved. Enter keeps it as a draft with the field's own
+  // error; a focus move (Tab) shows the saved locale again, still with the
+  // error; the page shown again has the saved locale and no error. A valid
+  // locale is saved on a focus move.
+  function customLocaleCheck() {
+    var locale = find(focusPage, it => it.customMode !== undefined && it.key === "locale")
+    var editor = find(locale, it => it.pasteError !== undefined)
+    var saved = focusPage.saves
+    eq(editor.visible ? editor.text : "", "de_DE", "the saved custom locale shows in its editor")
+    typeOver(editor, "de-DE", "the custom locale editor takes the focus", function () {
+      ev.keyClick(Qt.Key_Return, Qt.NoModifier, -1)
+      eq(editor.text, "de-DE", "Enter keeps a refused locale as a draft")
+      check(shows(locale, texts.notAllowed), "and the locale field says it is not allowed")
+      ev.keyClick(Qt.Key_Tab, Qt.NoModifier, -1)
+      step(function () {
+        return !editor.inputActiveFocus
+      }, "Tab leaves the custom locale editor", function () {
+        eq(editor.text, "de_DE", "a focus move shows the saved locale again")
+        check(shows(locale, texts.notAllowed), "and still says the typed one is not allowed")
+        typeOver(editor, "de-DE", "the custom locale editor takes the focus again", function () {
+          ev.keyClick(Qt.Key_Return, Qt.NoModifier, -1)
+          // Leaving the page and coming back drops the draft.
+          focusPage.visible = false
+          focusPage.visible = true
+          eq(editor.text, "de_DE", "the page shown again has the saved locale")
+          check(!shows(locale, texts.notAllowed), "and no error for the draft that is gone")
+          same(focusPage.saves, saved, "a refused locale is never sent to be saved")
+          typeOver(editor, "fr_FR", "the custom locale editor takes the focus once more", function () {
+            ev.keyClick(Qt.Key_Tab, Qt.NoModifier, -1)
+            step(function () {
+              return !editor.inputActiveFocus
+            }, "Tab leaves the custom locale editor again", function () {
+              same(focusPage.saves, saved.concat([["locale", "fr_FR"]]), "a valid locale is saved on a focus move")
+              check(!shows(locale, texts.notAllowed), "with no error")
+              focusWindow.visible = false
+              settingsCheck()
+            })
+          })
         })
       })
     })
