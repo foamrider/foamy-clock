@@ -195,8 +195,8 @@ def teardown(host):
     pids = [int(pid) for pid in record.read_text().split()] if record.exists() else []
     left = []
     if pids:
-        # The kill is a detached process started while the shell goes, so it
-        # can land a little after the shell has exited.
+        # The bridge and worker end shortly after their wrapper: the bridge
+        # gets its parent-death signal, and its handler kills the worker.
         harness.wait_for(lambda: not any(alive(pid) for pid in pids), timeout=10)
         left = [pid for pid in pids if alive(pid)]
     for pid in left:
