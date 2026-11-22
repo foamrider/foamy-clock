@@ -302,6 +302,24 @@ class CalendarEventsTest(unittest.TestCase):
                 result = CALENDAR_EVENTS.merge_month(CALENDAR_EVENTS.base_payload(start, end, state), cached)
                 self.assertEqual(result["selectedCalendars"], expected)
 
+    def test_refresh_stores_the_calendar_count_it_shows(self):
+        """The disk copy gets the same calendar count as the refreshed month."""
+        start, end = date(2026, 8, 24), date(2026, 10, 5)
+        rows = {
+            "every calendar deselected": (self.payload(), 0),
+            "worker failed": (None, 2),
+        }
+        for name, (fresh, expected) in rows.items():
+            with self.subTest(name), TemporaryDirectory() as directory:
+                path = Path(directory) / "agenda.json"
+                good = self.payload(events=[self.event()])
+                good["selectedCalendars"] = 2
+                self.assertTrue(CALENDAR_EVENTS.store_view(good, path))
+                with patch.object(CALENDAR_EVENTS, "run_bounded_worker", return_value=fresh):
+                    result = CALENDAR_EVENTS.refreshed_view(start, end, path)
+                stored = CALENDAR_EVENTS.cached_view(start, end, path)
+                self.assertEqual((result["selectedCalendars"], stored["selectedCalendars"]), (expected, expected))
+
     def test_cached_and_fresh_spanning_revisions_do_not_overwrite_each_other(self):
         start, end = date(2026, 8, 24), date(2026, 8, 26)
         old = CALENDAR_EVENTS.MonthBuilder(start, end)
