@@ -514,6 +514,56 @@ class CalendarEventsTest(unittest.TestCase):
         self.assertEqual(started[0].returncode, -signal.SIGKILL)
         self.assertFalse(Path(f"/proc/{started[0].pid}").exists())
 
+    def test_bridge_and_worker_end_when_their_wrapper_is_killed(self):
+        """The shell's kill of `timeout` reaches the bridge and its hung worker."""
+        import os
+        import signal
+
+        def alive(pid):
+            try:
+                return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] != "Z"
+            except OSError:
+                return False
+
+        def wait_until(condition):
+            deadline = time.monotonic() + 10
+            while not condition() and time.monotonic() < deadline:
+                time.sleep(0.02)
+            return condition()
+
+        with TemporaryDirectory() as directory:
+            record = Path(directory) / "worker"
+            (Path(directory) / "gi").mkdir()
+            (Path(directory) / "gi" / "__init__.py").write_text(
+                "import os, time\n"
+                "def require_version(*_):\n"
+                f"    with open({str(record) + '.tmp'!r}, 'w') as handle:\n"
+                "        handle.write(f'{os.getpid()} {os.getppid()}')\n"
+                f"    os.replace({str(record) + '.tmp'!r}, {str(record)!r})\n"
+                "    time.sleep(60)\n"
+            )
+            bridge = [sys.executable, str(MODULE_PATH), "--range-start", "2026-08-24", "--range-end", "2026-10-05"]
+            # Stands in for `timeout` killed before it can pass a signal on.
+            wrapper = subprocess.Popen(
+                [sys.executable, "-c", "import subprocess, sys, time; subprocess.Popen(sys.argv[1:]); time.sleep(60)"]
+                + bridge,
+                env={**os.environ, "PYTHONPATH": directory, "XDG_CACHE_HOME": directory},
+                stdout=subprocess.DEVNULL,
+            )
+            pids = []
+            try:
+                self.assertTrue(wait_until(record.exists), "the worker never started")
+                pids = [int(pid) for pid in record.read_text().split()]
+                wrapper.kill()
+                wrapper.wait()
+                self.assertTrue(wait_until(lambda: not any(alive(pid) for pid in pids)), "the bridge or worker runs on")
+            finally:
+                wrapper.kill()
+                wrapper.wait()
+                for pid in pids:
+                    if alive(pid):
+                        os.kill(pid, signal.SIGKILL)
+
     def test_source_count_concurrency_and_merged_events_are_bounded(self):
         import threading
 
