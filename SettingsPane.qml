@@ -280,6 +280,11 @@ FoamySettingsPage {
       label: root.label("calendarApp")
       value: String(root.current("calendarApp"))
       placeholderText: "gnome-calendar"
+      // The schema's check: a refused name stays a draft with its error here,
+      // instead of reaching the save queue and staying on screen unsaved.
+      validate: function (text) {
+        return Prefs.valid(Schema.fields, "calendarApp", text)
+      }
       onCommitted: function (next) {
         root.save("calendarApp", next)
       }

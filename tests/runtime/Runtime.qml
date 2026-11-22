@@ -23,8 +23,9 @@ import "plugin/kit/FoamyIpcResolver.js" as IpcResolver
 //  7. a click closes bar 1; an inline save keeps the other settings;
 //  8. one IPC handler for three bars and each of its functions; the bar
 //     button's right and middle clicks;
-//  9. the settings page: the refresh dropdown saves and follows the setting,
-//     the agenda switch, an invalid value, Esc;
+//  9. the settings page: a refused calendar app typed into its field, the
+//     refresh dropdown saves and follows the setting, the agenda switch, an
+//     invalid value, Esc;
 // 10. the calendar shortcut: a hostile stored name, a missing app, a present
 //     app (fake omarchy-cmd-present and omarchy-launch-or-focus);
 // 11. every helper run's arguments were accepted, and the first background
@@ -110,6 +111,26 @@ ShellRoot {
             settings: shell.barSettings
           }
         }
+      }
+    }
+  }
+
+  // The settings page alone, for the checks that need the keyboard focus.
+  FloatingWindow {
+    id: focusWindow
+    visible: false
+    implicitWidth: 420
+    implicitHeight: 900
+    color: "black"
+    Clock.SettingsPane {
+      id: focusPage
+      property var saves: []
+      anchors.fill: parent
+      settings: ({
+          calendarApp: "foamy-test-calendar"
+        })
+      onSave: function (key, value) {
+        saves = saves.concat([[key, value]])
       }
     }
   }
@@ -520,7 +541,62 @@ ShellRoot {
     eq(ipc("settings").ran, true, "IPC settings runs")
     step(function () {
       return widget(0).opened && panel(0).editingSettings && panel(0).popup.bodyItem !== null && refreshDropdown() !== null
-    }, "IPC settings opens the leader's settings page", settingsCheck)
+    }, "IPC settings opens the leader's settings page", calendarAppDraftCheck)
+  }
+  // A typed calendar app the schema refuses stays in the field on Enter and
+  // gives way to the saved name when the focus moves on; only a valid one is
+  // saved. Offscreen, the bar popup gets no window and so no keyboard focus:
+  // the page is checked in a window of its own (focusWindow).
+  function calendarAppDraftCheck() {
+    var app = find(focusPage, it => it.saveFailed !== undefined && it.label === Kit.FoamyI18n.t("Calendar app"))
+    focusWindow.visible = true
+    step(function () {
+      return focusPage.Window.window !== null
+    }, "the settings page has a window of its own", function () {
+      var window = focusPage.Window.window
+      window.requestActivate()
+      step(function () {
+        return window.active
+      }, "its window is active", function () {
+        app.field.focusInput()
+        step(function () {
+          return app.field.inputActiveFocus
+        }, "the calendar app field takes the focus", function () {
+          refusedCalendarApp(app)
+        })
+      })
+    })
+  }
+  function refusedCalendarApp(app) {
+    app.field.text = "gnome calendar"
+    app.field.textEdited()
+    app.field.accepted()
+    eq(app.field.text, "gnome calendar", "Enter keeps a refused calendar app as a draft")
+    eq(app.error, texts.notAllowed, "and the field says it is not allowed")
+    focusPage.backTarget.forceActiveFocus()
+    step(function () {
+      return !app.field.inputActiveFocus
+    }, "the focus leaves the calendar app field", function () {
+      eq(app.field.text, "foamy-test-calendar", "the field shows the saved calendar app again")
+      eq(app.error, texts.notAllowed, "and still says the typed one is not allowed")
+      same(focusPage.saves, [], "a refused calendar app is not saved")
+      app.field.focusInput()
+      step(function () {
+        return app.field.inputActiveFocus
+      }, "the calendar app field takes the focus again", function () {
+        app.field.text = "evolution"
+        app.field.textEdited()
+        focusPage.backTarget.forceActiveFocus()
+        step(function () {
+          return !app.field.inputActiveFocus
+        }, "the focus leaves the calendar app field again", function () {
+          same(focusPage.saves, [["calendarApp", "evolution"]], "a valid calendar app is saved on focus-out")
+          eq(app.error, "", "with no error")
+          focusWindow.visible = false
+          settingsCheck()
+        })
+      })
+    })
   }
   function settingsCheck() {
     var service = Clock.ClockService
