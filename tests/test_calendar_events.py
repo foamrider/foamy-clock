@@ -695,8 +695,21 @@ class CalendarEventsTest(unittest.TestCase):
             "2026-10-05",
         ]
         with TemporaryDirectory() as directory:
-            # An explicit address keeps GDBus off the real session bus.
-            with patch.dict("os.environ", {"DBUS_SESSION_BUS_ADDRESS": f"unix:path={directory}/no-bus"}):
+            # The real libraries run: an explicit address keeps GDBus off the
+            # real session bus, and a temporary home and runtime directory
+            # keep GLib and dconf away from the user's files and session.
+            runtime = Path(directory) / "runtime"
+            runtime.mkdir(mode=0o700)
+            isolated = {
+                "DBUS_SESSION_BUS_ADDRESS": f"unix:path={directory}/no-bus",
+                "HOME": f"{directory}/home",
+                "XDG_CONFIG_HOME": f"{directory}/config",
+                "XDG_CACHE_HOME": f"{directory}/cache",
+                "XDG_DATA_HOME": f"{directory}/data",
+                "XDG_STATE_HOME": f"{directory}/state",
+                "XDG_RUNTIME_DIR": str(runtime),
+            }
+            with patch.dict("os.environ", isolated):
                 month = CALENDAR_EVENTS.run_bounded_worker(command, max_bytes=CALENDAR_EVENTS.MAX_MONTH_BYTES)
         self.assertIsNotNone(month)
         self.assertEqual((month["state"], month["complete"]), ("error", False))
