@@ -11,10 +11,6 @@ BarWidget.qml: unqualified: Unqualified access | fontFamily: button.fontFamily
 BarWidget.qml: unqualified: Unqualified access | fontSize: modelData.length > 3 ? button.fontSize * 0.9 : button.fontSize
 BarWidget.qml: unqualified: Unqualified access | fontSize: modelData.length > 3 ? button.fontSize * 0.9 : button.fontSize
 BarWidget.qml: unqualified: Unqualified access | width: button.width
-ClockFormatLabel.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: FoamyStyle.font.body
-ClockFormatLabel.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: FoamyStyle.font.body
-ClockFormatLabel.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: FoamyStyle.font.body
-ClockFormatLabel.qml: missing-property: Member "body" not found on type "QObject" | fontSize: FoamyStyle.font.body
 ClockFormatLabel.qml: unqualified: Unqualified access | spacing: Style.spaceReal(6)
 ClockPanel.qml: id-shadows-member: Id for object FoamyPopup shadows property "popup". Rename one or the other. | if (popup.bodyItem)
 ClockPanel.qml: id-shadows-member: Note: Id defined here | id: popup
@@ -73,22 +69,7 @@ ClockService.qml: block-scope-var-declaration: var declaration in block scope is
 ClockService.qml: import: Type ClockService not declared as singleton in qmldir but using pragma Singleton
 ClockView.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var visible = service.weeks.some(w => w.days.some(d => d.key === cursorKey && d.inMonth))
 ClockView.qml: missing-property: Member "background" not found on type "QObject" | readonly property color weekColumnColor: Qt.tint(Commons.Color.popups.background, Qt.alpha(FoamyPalette.text, 0.035))
-ClockView.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: FoamyStyle.font.body
-ClockView.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: FoamyStyle.font.bodySmall
-ClockView.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: FoamyStyle.font.bodySmall
-ClockView.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: FoamyStyle.font.bodySmall
-ClockView.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: FoamyStyle.font.bodySmall
-ClockView.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: FoamyStyle.font.bodySmall
-ClockView.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: FoamyStyle.font.bodySmall
-ClockView.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: FoamyStyle.font.bodySmall
-ClockView.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: FoamyStyle.font.bodySmall
-ClockView.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: FoamyStyle.font.bodySmall
 ClockView.qml: missing-property: Member "hairline" not found on type "QObject" | border.width: modelData.today || selected ? Style.spacing.hairline : 0
-ClockView.qml: missing-property: Member "iconLarge" not found on type "QObject" | font.pixelSize: root.compactHeight ? FoamyStyle.font.iconLarge : Style.space(25)
-ClockView.qml: missing-property: Member "iconLarge" not found on type "QObject" | font.pixelSize: root.compactHeight ? FoamyStyle.font.iconLarge : Style.space(25)
-ClockView.qml: missing-property: Member "numeral" not found on type "QObject" | font.pixelSize: root.veryShortHeight ? Style.space(32) : root.compactHeight ? FoamyStyle.font.numeralCompact : FoamyStyle.font.numeral
-ClockView.qml: missing-property: Member "numeralCompact" not found on type "QObject" | font.pixelSize: root.veryShortHeight ? Style.space(32) : root.compactHeight ? FoamyStyle.font.numeralCompact : FoamyStyle.font.numeral
-ClockView.qml: missing-property: Member "subtitle" not found on type "QObject" | font.pixelSize: FoamyStyle.font.subtitle
 ClockView.qml: unqualified: Unqualified access | Accessible.name: root.displayLocale.toString(new Date(modelData.year, modelData.month, modelData.day), Locale.LongFormat)
 ClockView.qml: unqualified: Unqualified access | Accessible.role: service.agendaState === "error" ? Accessible.AlertMessage : Accessible.StaticText
 ClockView.qml: unqualified: Unqualified access | color: modelData.inMonth ? FoamyPalette.text : FoamyPalette.mutedText
@@ -155,7 +136,6 @@ ClockView.qml: unqualified: Unqualified access | width: root.cellWidth
 ClockView.qml: unqualified: Unqualified access | width: root.cellWidth
 ClockView.qml: unqualified: Unqualified access | width: root.gutterWidth
 ClockView.qml: unqualified: Unqualified access | width: root.weekColumnWidth
-SettingsPane.qml: missing-property: Member "caption" not found on type "QObject" | font.pixelSize: FoamyStyle.font.caption
 SettingsPane.qml: unqualified: Unqualified access | label: root.label(field.key)
 SettingsPane.qml: unqualified: Unqualified access | labelDelegate: field.glyphLabels ? glyphLabel : null
 SettingsPane.qml: unqualified: Unqualified access | presets: root.formatOptions(modelData)

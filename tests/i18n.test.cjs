@@ -21,7 +21,8 @@ assert.equal(I.text('dddd, MMMM d', 'no'), 'dddd d. MMMM');
 const calls = /\b(t|tn|tr)\(\s*"((?:[^"\\]|\\.)*)"/g;
 const keys = code => [...code.matchAll(calls)].map(m => ({fn: m[1], key: JSON.parse(`"${m[2]}"`)}));
 const plugin = fs.readdirSync(root).filter(f => f.endsWith('.qml')).flatMap(f => keys(fs.readFileSync(path.join(root, f), 'utf8')));
-const kitCode = fs.readFileSync(path.join(root, 'kit', 'FoamyI18n.qml'), 'utf8').split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
+const kitLines = name => fs.readFileSync(path.join(root, 'kit', name), 'utf8').split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
+const kitCode = kitLines('FoamyI18n.qml');
 const kit = keys(kitCode);
 assert.ok(kit.some(k => k.fn === 'tn'), 'kit/FoamyI18n.qml: no tn() key found, the scan is stale');
 for (const {key} of [...plugin, ...kit]) assert.ok(Object.hasOwn(I.en, key), `catalog entry for ${key}`);
@@ -35,5 +36,10 @@ for (const {fn, key} of [...plugin, ...kit]) {
 }
 // The widget shows FoamyPrefs errors through tr(prefs.error).
 for (const message of [F.NOT_ALLOWED, F.NO_ENTRY]) assert.ok(Object.hasOwn(I.no, message), `Norwegian entry for ${message}`);
+// A failed paste into the calendar app field: FoamyTextSettingField shows
+// SafeTextField's pasteError through FoamyI18n.t.
+const pasteErrors = kitLines('SafeTextField.qml').split('\n').filter(l => /\bpasteError = /.test(l)).flatMap(l => [...l.matchAll(/"([^"]+)"/g)].map(m => m[1]));
+assert.ok(pasteErrors.length >= 3, `kit/SafeTextField.qml: paste errors found: ${pasteErrors.join(' | ')}`);
+for (const message of pasteErrors) for (const [name, catalog] of [['en', I.en], ['no', I.no]]) assert.ok(Object.hasOwn(catalog, message), `${name} entry for ${message}`);
 for (const f of manifest.barWidget.schema) assert.ok(Object.hasOwn(I.no, f.label), f.label);
 console.log('ok — catalogs, plural entries, date patterns and every QML string');
