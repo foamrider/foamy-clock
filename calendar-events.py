@@ -624,9 +624,12 @@ def run_bounded_worker(
 def merge_month(fresh, cached):
     """Retain complete cached dates individually without hiding fresh good dates."""
     builder = MonthBuilder(date.fromisoformat(fresh["date"]), date.fromisoformat(fresh["rangeEnd"]))
-    builder.payload.update(
-        selectedCalendars=fresh["selectedCalendars"] or cached["selectedCalendars"], updatedAt=fresh["updatedAt"]
-    )
+    # A failed worker could not read the calendar count; any other refresh
+    # states it, including none selected.
+    calendars = fresh["selectedCalendars"]
+    if fresh["state"] == "error":
+        calendars = calendars or cached["selectedCalendars"]
+    builder.payload.update(selectedCalendars=calendars, updatedAt=fresh["updatedAt"])
     for key, day in fresh["dates"].items():
         old = cached["dates"][key]
         keep_old = not day["complete"] and (

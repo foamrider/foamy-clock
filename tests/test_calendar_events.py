@@ -286,6 +286,22 @@ class CalendarEventsTest(unittest.TestCase):
         self.assertEqual(result["dates"]["2026-08-25"]["state"], "ok")
         self.assertEqual(result["dates"]["2026-08-25"]["updatedAt"], 200)
 
+    def test_merged_month_counts_the_calendars_of_a_good_refresh(self):
+        """A failed worker knows no calendars; a good refresh with none selected does."""
+        start, end = date(2026, 8, 24), date(2026, 8, 26)
+        old = CALENDAR_EVENTS.MonthBuilder(start, end)
+        old.add(self.event(), ["2026-08-24"])
+        cached = old.finish()
+        cached["selectedCalendars"] = 2
+        rows = {
+            "every calendar deselected": ("ok", 0),
+            "worker failed": ("error", 2),
+        }
+        for name, (state, expected) in rows.items():
+            with self.subTest(name):
+                result = CALENDAR_EVENTS.merge_month(CALENDAR_EVENTS.base_payload(start, end, state), cached)
+                self.assertEqual(result["selectedCalendars"], expected)
+
     def test_cached_and_fresh_spanning_revisions_do_not_overwrite_each_other(self):
         start, end = date(2026, 8, 24), date(2026, 8, 26)
         old = CALENDAR_EVENTS.MonthBuilder(start, end)
