@@ -26,8 +26,9 @@ import "plugin/kit/FoamyIpcResolver.js" as IpcResolver
 //  8. one IPC handler for three bars and each of its functions; the bar
 //     button's right and middle clicks;
 //  9. the settings page: a refused calendar app typed into its field, a
-//     refused custom date locale, the refresh dropdown saves and follows the
-//     setting, the agenda switch, an invalid value, Esc;
+//     refused custom date locale, the bar format previews, the refresh
+//     dropdown saves and follows the setting, the agenda switch, an invalid
+//     value, Esc;
 // 10. the calendar shortcut: a hostile stored name, a missing app, a present
 //     app (fake omarchy-cmd-present and omarchy-launch-or-focus);
 // 11. every helper run's arguments were accepted, and the first background
@@ -741,15 +742,36 @@ ShellRoot {
                 ev.keyClick(Qt.Key_V, Qt.ControlModifier, -1)
                 step(function () {
                   return shows(locale, texts.pasteFailed)
-                }, "a failed paste says so under the custom locale editor", function () {
-                  focusWindow.visible = false
-                  settingsCheck()
-                })
+                }, "a failed paste says so under the custom locale editor", barFormatsCheck)
               })
             })
           })
         })
       })
+    })
+  }
+  // "Bar formats" opened: a preset's preview splits at the clock glyph and
+  // keeps the bar's gap (Style.spaceReal(6)) on each side of it. Whatever
+  // fails to load there (a ReferenceError in the log) also fails the run.
+  function barFormatsCheck() {
+    find(focusPage, it => it.iconName !== undefined && it.label === Kit.FoamyI18n.t("Bar formats")).clicked()
+    // The Row inside the "Bar format" dropdown's trigger label: date, glyph, time.
+    var parts = function () {
+      var format = find(focusPage, it => it.customMode !== undefined && it.key === "format")
+      var dropdown = format ? find(format, it => it.triggerItem !== undefined) : null
+      var label = dropdown ? find(dropdown.triggerItem, it => it.splitClock === true) : null
+      var row = label ? find(label, it => it !== label && it.spacing !== undefined) : null
+      return row && row.children.length === 3 ? row.children : null
+    }
+    step(function () {
+      var shown = parts()
+      return shown !== null && shown[2].x > shown[1].x && shown[1].x > 0
+    }, "opening Bar formats shows the bar format's preview with its clock glyph", function () {
+      var shown = parts()
+      var gaps = [shown[1].x - (shown[0].x + shown[0].width), shown[2].x - (shown[1].x + shown[1].width)]
+      check(gaps.every(gap => Math.abs(gap - Style.spaceReal(6)) < 0.01), "the preview keeps the bar's " + Style.spaceReal(6) + " px gap on each side of the clock glyph: " + JSON.stringify(gaps))
+      focusWindow.visible = false
+      settingsCheck()
     })
   }
   function settingsCheck() {
