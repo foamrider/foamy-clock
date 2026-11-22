@@ -154,7 +154,7 @@ PanelKeyCatcher {
       return FoamyI18n.t("Calendar data is unavailable")
     if (service.agendaState === "partial")
       return FoamyI18n.t("Some events may be missing. Open calendar for the full view.")
-    return service.agendaMessage
+    return ""
   }
 
   function agendaCountText() {
@@ -694,9 +694,24 @@ PanelKeyCatcher {
                 onClicked: root.calendarRequested()
               }
               PanelToolTip {
+                id: eventTip
                 visible: eventMouse.containsMouse
+                // The host's tooltip is as wide as its text and wraps only
+                // under a cap, and the panel's window spans the screen, so
+                // a long title or location would spread far past the popup.
+                // Capped as the kit caps its own tooltips.
+                implicitWidth: Math.min(implicitContentWidth + leftPadding + rightPadding, Style.space(320))
                 text: (eventRow.modelData.title || FoamyI18n.t("Untitled event")) + "\n" + root.eventTimeText(eventRow.modelData) + " · " + root.eventDetails(eventRow.modelData)
                 fontFamily: FoamyStyle.fontFamily
+
+                // The host's text wraps at word boundaries only, so a word
+                // longer than the cap (a meeting link as the location) would
+                // run past it.
+                Binding {
+                  target: eventTip.contentItem
+                  property: "wrapMode"
+                  value: Text.Wrap
+                }
               }
             }
           }

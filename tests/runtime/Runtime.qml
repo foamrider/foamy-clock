@@ -1,4 +1,5 @@
 import QtQuick
+import QtTest
 import Quickshell
 import Quickshell.Io
 import qs.Commons
@@ -16,6 +17,7 @@ import "plugin/kit/FoamyIpcResolver.js" as IpcResolver
 //  2. the bar label (format, ISO week, clock glyph split, vertical lines);
 //  3. a click opens bar 1 on the saved events (order, count, ongoing event,
 //     details shown as plain text, one dot, footer, no Evolution request);
+//     a long event's tooltip wraps in its capped box;
 //  4. a key on an empty day selects it without a helper run;
 //  5. month browsing and arrows (the cursor stays in the shown month), and a
 //     month Evolution cannot serve shows an error;
@@ -23,9 +25,10 @@ import "plugin/kit/FoamyIpcResolver.js" as IpcResolver
 //  7. a click closes bar 1; an inline save keeps the other settings;
 //  8. one IPC handler for three bars and each of its functions; the bar
 //     button's right and middle clicks;
-//  9. the settings page: a refused calendar app typed into its field, the
-//     refresh dropdown saves and follows the setting, the agenda switch, an
-//     invalid value, Esc;
+//  9. the settings page: a refused calendar app typed into its field, a
+//     refused custom date locale, the bar format previews, the refresh
+//     dropdown saves and follows the setting, the agenda switch, an invalid
+//     value, Esc;
 // 10. the calendar shortcut: a hostile stored name, a missing app, a present
 //     app (fake omarchy-cmd-present and omarchy-launch-or-focus);
 // 11. every helper run's arguments were accepted, and the first background
@@ -61,6 +64,7 @@ ShellRoot {
       unavailable: "Kalender utilgjengelig",
       noData: "Kalenderdata er utilgjengelige",
       notAllowed: "Den verdien er ikke tillatt.",
+      pasteFailed: "Kunne ikke lime inn fra utklippstavlen. Kopier ren tekst og prøv igjen.",
       launchFailed: "Kalenderappen kunne ikke startes."
     }) : ({
       two: "2 events",
@@ -72,6 +76,7 @@ ShellRoot {
       unavailable: "Calendar unavailable",
       noData: "Calendar data is unavailable",
       notAllowed: "That value isn't allowed.",
+      pasteFailed: "Could not paste clipboard text. Copy plain text and try again.",
       launchFailed: "Calendar app could not be started."
     })
 
@@ -127,10 +132,38 @@ ShellRoot {
       property var saves: []
       anchors.fill: parent
       settings: ({
-          calendarApp: "foamy-test-calendar"
+          calendarApp: "foamy-test-calendar",
+          locale: "de_DE"
         })
       onSave: function (key, value) {
         saves = saves.concat([[key, value]])
+      }
+    }
+    // Real key and mouse events, through the window they are sent to.
+    Item {
+      TestEvent {
+        id: ev
+      }
+    }
+  }
+
+  // The agenda alone, for the checks that hover it: offscreen the bar popup
+  // gets no window, so its tooltips never open. A screen wide, as the
+  // panel's own window is.
+  FloatingWindow {
+    id: agendaWindow
+    visible: false
+    implicitWidth: 1600
+    implicitHeight: 1000
+    color: "black"
+    Loader {
+      id: agendaView
+      active: false
+      sourceComponent: Component {
+        Clock.ClockView {
+          settings: shell.barSettings
+          opened: true
+        }
       }
     }
   }
@@ -364,7 +397,60 @@ ShellRoot {
     // click has nothing to wait for and must start nothing.
     step(function () {
       return !service.agendaProcess.running && !service.cacheProcess.running
-    }, "the prefetch of the months ahead ends", emptyDayCheck)
+    }, "the prefetch of the months ahead ends", tooltipCheck)
+  }
+
+  // A long title and a meeting link as the location (runtime.py seeds them
+  // two days from today, in this month): hovered in the agenda's own window,
+  // the event's tooltip wraps them in its 320 px box instead of growing as
+  // wide as its text.
+  function toolTipOf(item) {
+    return Array.prototype.filter.call(item.data, d => d.delay !== undefined && typeof d.text === "string")[0] || null
+  }
+  function tooltipCheck() {
+    var service = Clock.ClockService
+    agendaWindow.visible = true
+    agendaView.active = true
+    step(function () {
+      return agendaView.item !== null && agendaView.item.Window.window !== null
+    }, "the agenda has a window of its own", function () {
+      var view = agendaView.item
+      view.moveRequested(service.today.getDate() > 2 ? -2 : 2, 0)
+      view.activateRequested()
+      var row = function () {
+        var list = agendaList(view)
+        list.forceLayout()
+        return service.agendaEvents.length === 1 ? find(list.contentItem, it => it.agendaStatus !== undefined && it.modelData.title === service.agendaEvents[0].title) : null
+      }
+      step(function () {
+        if (row() === null)
+          return false
+        // Sent again while waiting: a move before the row is laid out is lost.
+        ev.mouseMove(row(), 20, 20, -1, Qt.NoButton, Qt.NoModifier)
+        var tip = toolTipOf(row())
+        return tip !== null && tip.opened
+      }, "hovering the long event opens its tooltip", function () {
+        var tip = toolTipOf(row())
+        var cap = Style.space(320)
+        var title = service.agendaEvents[0].title
+        var inside = function () {
+          var text = tip.contentItem
+          return tip.width <= cap + 0.5 && text.contentWidth + text.leftPadding + text.rightPadding <= tip.width + 0.5
+        }
+        wait.waitFor(inside, 2000, function (ok) {
+          check(tip.implicitContentWidth > cap, "the long event's text is wider than the cap: " + tip.implicitContentWidth)
+          check(ok, "the tooltip wraps the long title and link inside its " + cap + " px box: " + tip.width + " px wide, " + tip.contentItem.contentWidth + " px of text")
+          eq(String(tip.text).split("\n")[0], title, "the tooltip shows the whole title")
+          ev.mouseMove(view, 5, 5, -1, Qt.NoButton, Qt.NoModifier)
+          view.textKey("t", 0)
+          agendaView.active = false
+          agendaWindow.visible = false
+          step(function () {
+            return service.selectedDateIsToday && service.agendaEvents.length === 2 && !service.agendaLoading
+          }, "back to today shows the saved events again", emptyDayCheck)
+        })
+      })
+    })
   }
 
   // 4. A key moves the cursor; Enter selects an empty day of the loaded month.
@@ -592,10 +678,100 @@ ShellRoot {
         }, "the focus leaves the calendar app field again", function () {
           same(focusPage.saves, [["calendarApp", "evolution"]], "a valid calendar app is saved on focus-out")
           eq(app.error, "", "with no error")
-          focusWindow.visible = false
-          settingsCheck()
+          customLocaleCheck()
         })
       })
+    })
+  }
+  // Whether a visible text under `item` reads `text`.
+  function shows(item, text) {
+    return findAll(item, it => it.visible && it.textFormat !== undefined && it.text === text).length > 0
+  }
+  // Focuses `editor`, selects its text and types `text` over it, with real keys.
+  function typeOver(editor, text, label, then) {
+    editor.focusInput()
+    step(function () {
+      return editor.inputActiveFocus
+    }, label, function () {
+      ev.keyClick(Qt.Key_A, Qt.ControlModifier, -1)
+      for (var i = 0; i < text.length; i++)
+        ev.keyClickChar(text.charAt(i), Qt.NoModifier, -1)
+      then()
+    })
+  }
+  // The custom date locale editor: a locale the schema refuses ("de-DE") is
+  // never sent to be saved. Enter keeps it as a draft with the field's own
+  // error; a focus move (Tab) shows the saved locale again, still with the
+  // error; the page shown again has the saved locale and no error. A valid
+  // locale is saved on a focus move. A paste that fails (runtime.py's
+  // wl-paste) says so under the editor.
+  function customLocaleCheck() {
+    var locale = find(focusPage, it => it.customMode !== undefined && it.key === "locale")
+    var editor = find(locale, it => it.pasteError !== undefined)
+    var saved = focusPage.saves
+    eq(editor.visible ? editor.text : "", "de_DE", "the saved custom locale shows in its editor")
+    typeOver(editor, "de-DE", "the custom locale editor takes the focus", function () {
+      ev.keyClick(Qt.Key_Return, Qt.NoModifier, -1)
+      eq(editor.text, "de-DE", "Enter keeps a refused locale as a draft")
+      check(shows(locale, texts.notAllowed), "and the locale field says it is not allowed")
+      ev.keyClick(Qt.Key_Tab, Qt.NoModifier, -1)
+      step(function () {
+        return !editor.inputActiveFocus
+      }, "Tab leaves the custom locale editor", function () {
+        eq(editor.text, "de_DE", "a focus move shows the saved locale again")
+        check(shows(locale, texts.notAllowed), "and still says the typed one is not allowed")
+        typeOver(editor, "de-DE", "the custom locale editor takes the focus again", function () {
+          ev.keyClick(Qt.Key_Return, Qt.NoModifier, -1)
+          // Leaving the page and coming back drops the draft.
+          focusPage.visible = false
+          focusPage.visible = true
+          eq(editor.text, "de_DE", "the page shown again has the saved locale")
+          check(!shows(locale, texts.notAllowed), "and no error for the draft that is gone")
+          same(focusPage.saves, saved, "a refused locale is never sent to be saved")
+          typeOver(editor, "fr_FR", "the custom locale editor takes the focus once more", function () {
+            ev.keyClick(Qt.Key_Tab, Qt.NoModifier, -1)
+            step(function () {
+              return !editor.inputActiveFocus
+            }, "Tab leaves the custom locale editor again", function () {
+              same(focusPage.saves, saved.concat([["locale", "fr_FR"]]), "a valid locale is saved on a focus move")
+              check(!shows(locale, texts.notAllowed), "with no error")
+              editor.focusInput()
+              step(function () {
+                return editor.inputActiveFocus
+              }, "the custom locale editor takes the focus for a paste", function () {
+                ev.keyClick(Qt.Key_V, Qt.ControlModifier, -1)
+                step(function () {
+                  return shows(locale, texts.pasteFailed)
+                }, "a failed paste says so under the custom locale editor", barFormatsCheck)
+              })
+            })
+          })
+        })
+      })
+    })
+  }
+  // "Bar formats" opened: a preset's preview splits at the clock glyph and
+  // keeps the bar's gap (Style.spaceReal(6)) on each side of it. Whatever
+  // fails to load there (a ReferenceError in the log) also fails the run.
+  function barFormatsCheck() {
+    find(focusPage, it => it.iconName !== undefined && it.label === Kit.FoamyI18n.t("Bar formats")).clicked()
+    // The Row inside the "Bar format" dropdown's trigger label: date, glyph, time.
+    var parts = function () {
+      var format = find(focusPage, it => it.customMode !== undefined && it.key === "format")
+      var dropdown = format ? find(format, it => it.triggerItem !== undefined) : null
+      var label = dropdown ? find(dropdown.triggerItem, it => it.splitClock === true) : null
+      var row = label ? find(label, it => it !== label && it.spacing !== undefined) : null
+      return row && row.children.length === 3 ? row.children : null
+    }
+    step(function () {
+      var shown = parts()
+      return shown !== null && shown[2].x > shown[1].x && shown[1].x > 0
+    }, "opening Bar formats shows the bar format's preview with its clock glyph", function () {
+      var shown = parts()
+      var gaps = [shown[1].x - (shown[0].x + shown[0].width), shown[2].x - (shown[1].x + shown[1].width)]
+      check(gaps.every(gap => Math.abs(gap - Style.spaceReal(6)) < 0.01), "the preview keeps the bar's " + Style.spaceReal(6) + " px gap on each side of the clock glyph: " + JSON.stringify(gaps))
+      focusWindow.visible = false
+      settingsCheck()
     })
   }
   function settingsCheck() {

@@ -75,12 +75,8 @@ QtObject {
   property int pendingMonthBytes: 0
   property int pendingMonthChunks: 0
   property string agendaState: "loading"
-  property string agendaMessage: ""
-  property string overviewState: "missing"
-  property string agendaDateKey: ""
   property int selectedCalendars: 0
   property double lastAgendaRefreshMs: 0
-  property bool agendaCached: false
   property string agendaProcessRangeStartKey: ""
   property string agendaProcessRangeEndKey: ""
   property string cacheProcessRangeStartKey: ""
@@ -108,7 +104,6 @@ QtObject {
     root.calendarDates = ({})
     root.monthView = null
     root.pendingMonth = null
-    root.overviewState = "missing"
     Qt.callLater(root.requestAgendaDate)
   }
   onPrefetchHorizonKeyChanged: {
@@ -125,7 +120,6 @@ QtObject {
     root.calendarDates = ({})
     root.monthView = null
     root.pendingMonth = null
-    root.overviewState = "missing"
     if (!agendaEnabled && agendaProcess.running) {
       root.agendaRequestCancelled = true
       agendaProcess.signal(15)
@@ -171,10 +165,8 @@ QtObject {
       return false
     root.agendaEvents = day.events.map(index => month.events[index])
     root.agendaState = day.state
-    root.agendaDateKey = root.selectedDateKey
     root.selectedCalendars = month.selectedCalendars
     root.lastAgendaRefreshMs = day.updatedAt * 1000
-    root.agendaCached = month.cached || day.cached
     return true
   }
 
@@ -282,10 +274,7 @@ QtObject {
     root.agendaReset()
     root.agendaEvents = []
     root.agendaState = "loading"
-    root.agendaMessage = ""
-    root.agendaDateKey = ""
     root.lastAgendaRefreshMs = 0
-    root.agendaCached = false
   }
 
   function refreshAgenda(force) {
@@ -326,7 +315,7 @@ QtObject {
     agendaProcess.running = true
   }
 
-  function applyAgendaPayload(raw, fromCache, rangeStart, rangeEnd) {
+  function applyAgendaPayload(raw, rangeStart, rangeEnd) {
     if (!root.agendaEnabled || rangeStart !== root.agendaRangeStartKey || rangeEnd !== root.agendaRangeEndKey)
       return false
     try {
@@ -342,7 +331,6 @@ QtObject {
           return false
         root.pendingMonth = payload
         root.pendingMonth.events = []
-        root.pendingMonth.cached = fromCache || payload.cached
         root.pendingMonthBytes = String(raw).length
         root.pendingMonthChunks = 0
         return false
@@ -389,7 +377,6 @@ QtObject {
       }
       root.monthView = month
       root.calendarDates = dates
-      root.overviewState = month.state
       root.showSelectedDay()
       return true
     } catch (error) {
@@ -493,7 +480,7 @@ QtObject {
     command: ["timeout", "2s", "nice", "-n", "10", "python3", root.helperPath, "--cached", "--range-start", root.cacheProcessRangeStartKey, "--range-end", root.cacheProcessRangeEndKey]
     stdout: SplitParser {
       onRead: data => {
-        root.applyAgendaPayload(data, true, root.cacheProcessRangeStartKey, root.cacheProcessRangeEndKey)
+        root.applyAgendaPayload(data, root.cacheProcessRangeStartKey, root.cacheProcessRangeEndKey)
       }
     }
     onExited: Qt.callLater(function () {
@@ -510,15 +497,19 @@ QtObject {
   property Process agendaProcess: Process {
     // `timeout` keeps the helper in a process group of its own. If the shell
     // dies without stopping it (a crash), setpriv's parent-death signal makes
-    // timeout pass SIGTERM on to the bridge and its worker.
+    // timeout pass SIGTERM on to the bridge and its worker. A reload or an
+    // exit stops only `timeout`: the second setpriv gives the bridge its own
+    // parent-death signal before Python starts, so a stop that lands while
+    // the bridge is still starting reaches it too (the helper sets the
+    // signal again in main(), and for its worker).
     command: ["setpriv", "--pdeathsig", "TERM", "timeout",
       // One month worker has a 45-second deadline; also bound the bridge.
-      "55s", "nice", "-n", "10", "python3", root.helperPath, "--range-start", root.agendaProcessRangeStartKey, "--range-end", root.agendaProcessRangeEndKey, "--max-age", String(root.agendaForceRefresh ? 0 : root.agendaRefreshIntervalMs / 1000)].concat(root.agendaPrefetch ? ["--cache-only"] : [])
+      "55s", "setpriv", "--pdeathsig", "TERM", "nice", "-n", "10", "python3", root.helperPath, "--range-start", root.agendaProcessRangeStartKey, "--range-end", root.agendaProcessRangeEndKey, "--max-age", String(root.agendaForceRefresh ? 0 : root.agendaRefreshIntervalMs / 1000)].concat(root.agendaPrefetch ? ["--cache-only"] : [])
     stdout: SplitParser {
       onRead: data => {
         if (root.agendaPrefetch)
           return
-        if (root.applyAgendaPayload(data, false, root.agendaProcessRangeStartKey, root.agendaProcessRangeEndKey))
+        if (root.applyAgendaPayload(data, root.agendaProcessRangeStartKey, root.agendaProcessRangeEndKey))
           root.agendaPayloadApplied = true
       }
     }
@@ -542,7 +533,6 @@ QtObject {
       root.lastAgendaRangeKey = completedRangeKey
       root.lastAgendaRangeRefreshMs = Date.now()
       if (!root.agendaPayloadApplied) {
-        root.overviewState = "partial"
         root.agendaState = root.lastAgendaRefreshMs > 0 ? "partial" : "error"
       }
       Qt.callLater(root.schedulePrefetch)

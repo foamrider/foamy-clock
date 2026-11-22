@@ -47,12 +47,23 @@ FoamySettingsPage {
     property bool customSelected: false
     // Short presets (locales) are a row; format previews stay full width.
     property bool compact: false
+    // Why the schema refused the last draft ("" when it did not). A refused
+    // draft never reaches the save queue, which would only report it at the
+    // top of the page while the editor went on showing it as if in use.
+    property string problem: ""
     readonly property var value: root.current(key)
     readonly property bool customMode: customSelected || !presets.some(function (o) {
       return o.value === field.value
     })
     width: parent ? parent.width : 0
     spacing: FoamyStyle.gapSmall
+
+    // The editor shows the saved value again, and follows it as before.
+    function showSaved() {
+      editor.text = Qt.binding(function () {
+        return Schema.displayValue(field.key, field.value)
+      })
+    }
 
     FoamyDropdown {
       width: parent.width
@@ -84,13 +95,45 @@ FoamySettingsPage {
       text: Schema.displayValue(field.key, field.value)
       placeholderText: field.placeholder
       translate: FoamyI18n.t
+      onTextEdited: field.problem = ""
       onEditingFinished: {
         if (!visible)
           return
         var next = Schema.parseValue(field.key, text)
+        // The rules of the field and the save queue, as FoamyTextSettingField
+        // has them: Enter keeps a refused draft to fix, a focus move shows the
+        // saved value again; the error stays until the next edit.
+        field.problem = Prefs.problem(Schema.fields, field.key, next)
+        if (field.problem !== "") {
+          if (!inputActiveFocus)
+            field.showSaved()
+          return
+        }
         if (next !== field.value)
           root.save(field.key, next)
       }
+      // Hidden (a preset picked, the page left), the editor drops its draft
+      // unsaved: shown again, it has the saved value and no error.
+      onVisibleChanged: if (!visible) {
+        field.problem = ""
+        field.showSaved()
+      }
+    }
+    Text {
+      // A refused draft, else a refused paste (too large, timed out, not
+      // plain text): SafeTextField sets pasteError but draws nothing itself.
+      readonly property string message: field.problem !== "" ? FoamyI18n.t(field.problem) : (editor.pasteError !== "" ? FoamyI18n.t(editor.pasteError) : "")
+      visible: message !== ""
+      width: parent.width
+      text: message
+      textFormat: Text.PlainText
+      horizontalAlignment: Text.AlignLeft
+      wrapMode: Text.WordWrap
+      color: FoamyPalette.onSurface(FoamyPalette.error)
+      font.family: FoamyStyle.fontFamily
+      font.pixelSize: FoamyStyle.font.caption
+      Accessible.role: Accessible.AlertMessage
+      Accessible.name: message
     }
     Text {
       visible: field.customMode && field.hint !== ""

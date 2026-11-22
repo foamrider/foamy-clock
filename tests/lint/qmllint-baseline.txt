@@ -11,7 +11,6 @@ BarWidget.qml: unqualified: Unqualified access | fontFamily: button.fontFamily
 BarWidget.qml: unqualified: Unqualified access | fontSize: modelData.length > 3 ? button.fontSize * 0.9 : button.fontSize
 BarWidget.qml: unqualified: Unqualified access | fontSize: modelData.length > 3 ? button.fontSize * 0.9 : button.fontSize
 BarWidget.qml: unqualified: Unqualified access | width: button.width
-ClockFormatLabel.qml: unqualified: Unqualified access | spacing: Style.spaceReal(6)
 ClockPanel.qml: id-shadows-member: Id for object FoamyPopup shadows property "popup". Rename one or the other. | if (popup.bodyItem)
 ClockPanel.qml: id-shadows-member: Note: Id defined here | id: popup
 ClockPanel.qml: missing-property: Member "centerHoverRevealSuppressed" not found on type Panel::bar with type QObject | root.bar.centerHoverRevealSuppressed = value
