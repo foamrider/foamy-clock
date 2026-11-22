@@ -268,6 +268,20 @@ test('output is ignored when the agenda is off', () => {
   assert.deepEqual(plain(fx.root.dotsForDate('2026-08-31')), [])
 })
 
+// The day tooltip warns about dates the agenda could not load. With the
+// agenda off nothing is loaded on purpose, so no date carries the warning.
+test('only a date the agenda could not load is incomplete', () => {
+  const fx = service()
+  assert.equal(fx.root.dateIsIncomplete('2026-08-31'), true, 'nothing loaded yet')
+  deliver(fx, month(fx))
+  assert.equal(fx.root.dateIsIncomplete('2026-08-31'), false, 'loaded')
+  for (const loaded of [false, true]) {
+    const off = service({agendaEnabled: false})
+    if (loaded) off.root.monthView = fx.root.monthView
+    assert.equal(off.root.dateIsIncomplete('2026-08-31'), false, `agenda off, month loaded: ${loaded}`)
+  }
+})
+
 test('prefetch covers this month and three ahead across a year end', () => {
   const expected = {
     1: [['2026-10-26', '2026-12-07'], ['2026-11-30', '2027-01-11'], ['2026-12-28', '2027-02-08'], ['2027-02-01', '2027-03-15']],

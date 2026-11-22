@@ -403,7 +403,11 @@ QtObject {
     return Array.isArray(dots) ? dots : []
   }
 
+  // A date the agenda could not load. With the agenda off no date is loaded
+  // on purpose, so none is incomplete.
   function dateIsIncomplete(key) {
+    if (!root.agendaEnabled)
+      return false
     var day = root.monthIsCurrent() ? root.monthView.dates[key] : null
     return !day || day.state !== "ok"
   }
