@@ -1,5 +1,7 @@
-# foamy-kit 0.9.0 6717baeac8988b1fbb91b608aa81f3c9221668bdbe26f0e56680bdfc6a5a53ba — do not edit; change foamy-kit and run sync
+# foamy-kit 0.13.1 1c1337833fbf28f1f64e2e29d9438d1c45e89719a033d74d5392634a8b528ccd — do not edit; change foamy-kit and run sync
 FoamyAction 1.0 FoamyAction.qml
+FoamyClickAway 1.0 FoamyClickAway.qml
+FoamyClipboard 1.0 FoamyClipboard.qml
 FoamyCursor 1.0 FoamyCursor.qml
 FoamyCursorSurface 1.0 FoamyCursorSurface.qml
 FoamyDropdown 1.0 FoamyDropdown.qml
