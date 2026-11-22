@@ -40,12 +40,14 @@ import harness  # noqa: E402
 
 # The calendar shortcut's host commands: every check is logged, only
 # "foamy-test-calendar" is installed, and a launch is recorded in the run's
-# out directory instead.
+# out directory instead. A paste never reads a real clipboard: `wl-paste`
+# fails, as it does when nothing is copied.
 FAKEBIN = {
     "omarchy-cmd-present": (
         '#!/bin/sh\nprintf "%s\\n" "$*" >>"$FOAMY_OUT/present"\n[ "$#" -eq 1 ] && [ "$1" = foamy-test-calendar ]\n'
     ),
     "omarchy-launch-or-focus": '#!/bin/sh\nprintf "%s\\n" "$*" >>"$FOAMY_OUT/launched"\n',
+    "wl-paste": "#!/bin/sh\nexit 1\n",
 }
 # Put first on the helper's PYTHONPATH: the worker's `import gi` finds this.
 FAKE_GI = 'def require_version(*_):\n    raise ValueError("no Evolution Data Server in tests")\n'

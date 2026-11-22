@@ -120,7 +120,9 @@ FoamySettingsPage {
       }
     }
     Text {
-      readonly property string message: field.problem !== "" ? FoamyI18n.t(field.problem) : ""
+      // A refused draft, else a refused paste (too large, timed out, not
+      // plain text): SafeTextField sets pasteError but draws nothing itself.
+      readonly property string message: field.problem !== "" ? FoamyI18n.t(field.problem) : (editor.pasteError !== "" ? FoamyI18n.t(editor.pasteError) : "")
       visible: message !== ""
       width: parent.width
       text: message

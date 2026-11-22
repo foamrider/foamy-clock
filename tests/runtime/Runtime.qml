@@ -63,6 +63,7 @@ ShellRoot {
       unavailable: "Kalender utilgjengelig",
       noData: "Kalenderdata er utilgjengelige",
       notAllowed: "Den verdien er ikke tillatt.",
+      pasteFailed: "Kunne ikke lime inn fra utklippstavlen. Kopier ren tekst og prøv igjen.",
       launchFailed: "Kalenderappen kunne ikke startes."
     }) : ({
       two: "2 events",
@@ -74,6 +75,7 @@ ShellRoot {
       unavailable: "Calendar unavailable",
       noData: "Calendar data is unavailable",
       notAllowed: "That value isn't allowed.",
+      pasteFailed: "Could not paste clipboard text. Copy plain text and try again.",
       launchFailed: "Calendar app could not be started."
     })
 
@@ -700,7 +702,8 @@ ShellRoot {
   // never sent to be saved. Enter keeps it as a draft with the field's own
   // error; a focus move (Tab) shows the saved locale again, still with the
   // error; the page shown again has the saved locale and no error. A valid
-  // locale is saved on a focus move.
+  // locale is saved on a focus move. A paste that fails (runtime.py's
+  // wl-paste) says so under the editor.
   function customLocaleCheck() {
     var locale = find(focusPage, it => it.customMode !== undefined && it.key === "locale")
     var editor = find(locale, it => it.pasteError !== undefined)
@@ -731,8 +734,18 @@ ShellRoot {
             }, "Tab leaves the custom locale editor again", function () {
               same(focusPage.saves, saved.concat([["locale", "fr_FR"]]), "a valid locale is saved on a focus move")
               check(!shows(locale, texts.notAllowed), "with no error")
-              focusWindow.visible = false
-              settingsCheck()
+              editor.focusInput()
+              step(function () {
+                return editor.inputActiveFocus
+              }, "the custom locale editor takes the focus for a paste", function () {
+                ev.keyClick(Qt.Key_V, Qt.ControlModifier, -1)
+                step(function () {
+                  return shows(locale, texts.pasteFailed)
+                }, "a failed paste says so under the custom locale editor", function () {
+                  focusWindow.visible = false
+                  settingsCheck()
+                })
+              })
             })
           })
         })
