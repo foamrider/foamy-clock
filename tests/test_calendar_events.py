@@ -605,6 +605,37 @@ class CalendarEventsTest(unittest.TestCase):
         self.assertTrue(all(day["state"] == "error" for day in month["dates"].values()))
         self.assertEqual(month["events"], [])
 
+    def test_unreachable_evolution_registry_is_an_error_not_no_calendars(self):
+        """The real libedataserver raises when its registry service has no bus.
+
+        An empty source list would read as "No calendars selected"; the worker
+        must report the month as failed instead.
+        """
+        try:
+            import gi
+
+            gi.require_version("EDataServer", "1.2")
+            gi.require_version("ECal", "2.0")
+            gi.require_version("ICalGLib", "4.0")
+        except (ImportError, ValueError):
+            self.skipTest("Evolution Data Server not installed")
+        command = [
+            sys.executable,
+            str(MODULE_PATH),
+            "--worker",
+            "--range-start",
+            "2026-08-24",
+            "--range-end",
+            "2026-10-05",
+        ]
+        with TemporaryDirectory() as directory:
+            # An explicit address keeps GDBus off the real session bus.
+            with patch.dict("os.environ", {"DBUS_SESSION_BUS_ADDRESS": f"unix:path={directory}/no-bus"}):
+                month = CALENDAR_EVENTS.run_bounded_worker(command, max_bytes=CALENDAR_EVENTS.MAX_MONTH_BYTES)
+        self.assertIsNotNone(month)
+        self.assertEqual((month["state"], month["complete"]), ("error", False))
+        self.assertTrue(all(day["state"] == "error" for day in month["dates"].values()))
+
     def test_failed_cache_write_keeps_the_old_file_and_the_live_result(self):
         start, end = date(2026, 8, 24), date(2026, 10, 5)
         with TemporaryDirectory() as directory:
