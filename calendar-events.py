@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 from concurrent.futures import ThreadPoolExecutor
+import ctypes
 from datetime import date, datetime, time, timedelta
 import fcntl
 import hashlib
@@ -43,6 +44,7 @@ MAX_CACHE_ENTRIES = 8
 CACHE_LOCK_SECONDS = 2.0
 WORKER_MEMORY_BYTES = 512 * 1024 * 1024
 WORKER_SECONDS = 45
+PR_SET_PDEATHSIG = 1
 TEXT_LIMITS = {"title": 256, "location": 128, "calendar": 80}
 TEXT_CONTROLS = str.maketrans({chr(code): " " for code in range(32)})
 
@@ -624,9 +626,12 @@ def run_bounded_worker(
 def merge_month(fresh, cached):
     """Retain complete cached dates individually without hiding fresh good dates."""
     builder = MonthBuilder(date.fromisoformat(fresh["date"]), date.fromisoformat(fresh["rangeEnd"]))
-    builder.payload.update(
-        selectedCalendars=fresh["selectedCalendars"] or cached["selectedCalendars"], updatedAt=fresh["updatedAt"]
-    )
+    # A failed worker could not read the calendar count; any other refresh
+    # states it, including none selected.
+    calendars = fresh["selectedCalendars"]
+    if fresh["state"] == "error":
+        calendars = calendars or cached["selectedCalendars"]
+    builder.payload.update(selectedCalendars=calendars, updatedAt=fresh["updatedAt"])
     for key, day in fresh["dates"].items():
         old = cached["dates"][key]
         keep_old = not day["complete"] and (
@@ -689,7 +694,22 @@ def refreshed_view(start: date, end: date, path: Path | None = None) -> dict[str
     return fresh
 
 
+def exit_with_parent() -> None:
+    """Get SIGTERM when the parent process ends (Linux prctl PR_SET_PDEATHSIG).
+
+    The shell runs the bridge under `timeout`, and on a reload or exit it stops
+    only `timeout`. When that kill lands before timeout passes a signal on, the
+    bridge would otherwise run on, and its worker until the 45 s deadline. The
+    worker likewise ends with its bridge.
+    """
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.prctl(PR_SET_PDEATHSIG, signal.SIGTERM, 0, 0, 0) != 0:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error))
+
+
 def main() -> int:
+    exit_with_parent()
     parser = argparse.ArgumentParser()
     parser.add_argument("--cached", action="store_true")
     parser.add_argument(

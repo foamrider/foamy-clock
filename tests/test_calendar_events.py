@@ -286,6 +286,40 @@ class CalendarEventsTest(unittest.TestCase):
         self.assertEqual(result["dates"]["2026-08-25"]["state"], "ok")
         self.assertEqual(result["dates"]["2026-08-25"]["updatedAt"], 200)
 
+    def test_merged_month_counts_the_calendars_of_a_good_refresh(self):
+        """A failed worker knows no calendars; a good refresh with none selected does."""
+        start, end = date(2026, 8, 24), date(2026, 8, 26)
+        old = CALENDAR_EVENTS.MonthBuilder(start, end)
+        old.add(self.event(), ["2026-08-24"])
+        cached = old.finish()
+        cached["selectedCalendars"] = 2
+        rows = {
+            "every calendar deselected": ("ok", 0),
+            "worker failed": ("error", 2),
+        }
+        for name, (state, expected) in rows.items():
+            with self.subTest(name):
+                result = CALENDAR_EVENTS.merge_month(CALENDAR_EVENTS.base_payload(start, end, state), cached)
+                self.assertEqual(result["selectedCalendars"], expected)
+
+    def test_refresh_stores_the_calendar_count_it_shows(self):
+        """The disk copy gets the same calendar count as the refreshed month."""
+        start, end = date(2026, 8, 24), date(2026, 10, 5)
+        rows = {
+            "every calendar deselected": (self.payload(), 0),
+            "worker failed": (None, 2),
+        }
+        for name, (fresh, expected) in rows.items():
+            with self.subTest(name), TemporaryDirectory() as directory:
+                path = Path(directory) / "agenda.json"
+                good = self.payload(events=[self.event()])
+                good["selectedCalendars"] = 2
+                self.assertTrue(CALENDAR_EVENTS.store_view(good, path))
+                with patch.object(CALENDAR_EVENTS, "run_bounded_worker", return_value=fresh):
+                    result = CALENDAR_EVENTS.refreshed_view(start, end, path)
+                stored = CALENDAR_EVENTS.cached_view(start, end, path)
+                self.assertEqual((result["selectedCalendars"], stored["selectedCalendars"]), (expected, expected))
+
     def test_cached_and_fresh_spanning_revisions_do_not_overwrite_each_other(self):
         start, end = date(2026, 8, 24), date(2026, 8, 26)
         old = CALENDAR_EVENTS.MonthBuilder(start, end)
@@ -498,6 +532,56 @@ class CalendarEventsTest(unittest.TestCase):
         self.assertEqual(started[0].returncode, -signal.SIGKILL)
         self.assertFalse(Path(f"/proc/{started[0].pid}").exists())
 
+    def test_bridge_and_worker_end_when_their_wrapper_is_killed(self):
+        """The shell's kill of `timeout` reaches the bridge and its hung worker."""
+        import os
+        import signal
+
+        def alive(pid):
+            try:
+                return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] != "Z"
+            except OSError:
+                return False
+
+        def wait_until(condition):
+            deadline = time.monotonic() + 10
+            while not condition() and time.monotonic() < deadline:
+                time.sleep(0.02)
+            return condition()
+
+        with TemporaryDirectory() as directory:
+            record = Path(directory) / "worker"
+            (Path(directory) / "gi").mkdir()
+            (Path(directory) / "gi" / "__init__.py").write_text(
+                "import os, time\n"
+                "def require_version(*_):\n"
+                f"    with open({str(record) + '.tmp'!r}, 'w') as handle:\n"
+                "        handle.write(f'{os.getpid()} {os.getppid()}')\n"
+                f"    os.replace({str(record) + '.tmp'!r}, {str(record)!r})\n"
+                "    time.sleep(60)\n"
+            )
+            bridge = [sys.executable, str(MODULE_PATH), "--range-start", "2026-08-24", "--range-end", "2026-10-05"]
+            # Stands in for `timeout` killed before it can pass a signal on.
+            wrapper = subprocess.Popen(
+                [sys.executable, "-c", "import subprocess, sys, time; subprocess.Popen(sys.argv[1:]); time.sleep(60)"]
+                + bridge,
+                env={**os.environ, "PYTHONPATH": directory, "XDG_CACHE_HOME": directory},
+                stdout=subprocess.DEVNULL,
+            )
+            pids = []
+            try:
+                self.assertTrue(wait_until(record.exists), "the worker never started")
+                pids = [int(pid) for pid in record.read_text().split()]
+                wrapper.kill()
+                wrapper.wait()
+                self.assertTrue(wait_until(lambda: not any(alive(pid) for pid in pids)), "the bridge or worker runs on")
+            finally:
+                wrapper.kill()
+                wrapper.wait()
+                for pid in pids:
+                    if alive(pid):
+                        os.kill(pid, signal.SIGKILL)
+
     def test_source_count_concurrency_and_merged_events_are_bounded(self):
         import threading
 
@@ -604,6 +688,50 @@ class CalendarEventsTest(unittest.TestCase):
         self.assertEqual(month["state"], "error")
         self.assertTrue(all(day["state"] == "error" for day in month["dates"].values()))
         self.assertEqual(month["events"], [])
+
+    def test_unreachable_evolution_registry_is_an_error_not_no_calendars(self):
+        """The real libedataserver raises when its registry service has no bus.
+
+        An empty source list would read as "No calendars selected"; the worker
+        must report the month as failed instead.
+        """
+        try:
+            import gi
+
+            gi.require_version("EDataServer", "1.2")
+            gi.require_version("ECal", "2.0")
+            gi.require_version("ICalGLib", "4.0")
+        except (ImportError, ValueError):
+            self.skipTest("Evolution Data Server not installed")
+        command = [
+            sys.executable,
+            str(MODULE_PATH),
+            "--worker",
+            "--range-start",
+            "2026-08-24",
+            "--range-end",
+            "2026-10-05",
+        ]
+        with TemporaryDirectory() as directory:
+            # The real libraries run: an explicit address keeps GDBus off the
+            # real session bus, and a temporary home and runtime directory
+            # keep GLib and dconf away from the user's files and session.
+            runtime = Path(directory) / "runtime"
+            runtime.mkdir(mode=0o700)
+            isolated = {
+                "DBUS_SESSION_BUS_ADDRESS": f"unix:path={directory}/no-bus",
+                "HOME": f"{directory}/home",
+                "XDG_CONFIG_HOME": f"{directory}/config",
+                "XDG_CACHE_HOME": f"{directory}/cache",
+                "XDG_DATA_HOME": f"{directory}/data",
+                "XDG_STATE_HOME": f"{directory}/state",
+                "XDG_RUNTIME_DIR": str(runtime),
+            }
+            with patch.dict("os.environ", isolated):
+                month = CALENDAR_EVENTS.run_bounded_worker(command, max_bytes=CALENDAR_EVENTS.MAX_MONTH_BYTES)
+        self.assertIsNotNone(month)
+        self.assertEqual((month["state"], month["complete"]), ("error", False))
+        self.assertTrue(all(day["state"] == "error" for day in month["dates"].values()))
 
     def test_failed_cache_write_keeps_the_old_file_and_the_live_result(self):
         start, end = date(2026, 8, 24), date(2026, 10, 5)

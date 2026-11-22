@@ -189,6 +189,14 @@ ShellRoot {
   function find(item, test) {
     return findAll(item, test)[0] || null
   }
+  // The texts of the day cells' tooltips. A ToolTip is a popup, not a child
+  // item, so it is found in its cell's data.
+  function dayToolTipTexts(view) {
+    return findAll(view, it => it.dotCount !== undefined && it.modelData !== undefined).map(function (cell) {
+      var tip = Array.prototype.filter.call(cell.data, d => d.delay !== undefined && typeof d.text === "string")[0]
+      return tip ? tip.text : null
+    })
+  }
   // The host WidgetButton in a bar widget.
   function button(i) {
     return find(widget(i), it => it !== widget(i) && it.pressable !== undefined && it.heldButtons !== undefined)
@@ -541,6 +549,9 @@ ShellRoot {
     agenda.clicked()
     eq(service.agendaEnabled, false, "the agenda switch turns the agenda off")
     eq(service.agendaEvents.length, 0, "its events go")
+    var tips = dayToolTipTexts(view)
+    eq(tips.length, 42, "every day of the grid has a tooltip")
+    same(tips.filter(text => text !== Kit.FoamyI18n.t("Select this date to see events")), [], "and none says the overview may be incomplete")
     eq(footer(view).status, "", "the footer says nothing about calendars")
     eq(footer(view).showRefresh, false, "and offers no refresh")
     agenda.clicked()

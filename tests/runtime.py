@@ -6,6 +6,10 @@ software renderer; 4.5 QML is loaded, never its scripts). The real helper
 runs: its disk cache is seeded with today's month (two events), and a fake
 `gi` package makes every Evolution worker fail, whatever the machine has
 installed, so a refresh always gives an error or partial month.
+A first, shorter run (runtime/Teardown.qml) quits the shell during a month
+refresh whose worker hangs, and checks that the bridge and worker end too.
+A second one kills the shell in the same state, as a crash would, and checks
+that the real `timeout` wrapper, the bridge and the worker end.
 Usage: tests/runtime.py [--language en|no]
 
 The seeded events are on the day this process sees and the shell reads its
@@ -19,6 +23,7 @@ import argparse
 from datetime import date, datetime, timedelta
 import importlib.util
 import os
+import signal
 import sys
 import time
 from pathlib import Path
@@ -43,6 +48,24 @@ FAKEBIN = {
 }
 # Put first on the helper's PYTHONPATH: the worker's `import gi` finds this.
 FAKE_GI = 'def require_version(*_):\n    raise ValueError("no Evolution Data Server in tests")\n'
+# For the teardown run: a worker that hangs (bounded) after it has written
+# its pid and its bridge's pid to $FOAMY_OUT/worker.
+HANGING_GI = """import os, time
+def require_version(*_):
+    path = os.environ["FOAMY_OUT"] + "/worker"
+    with open(path + ".tmp", "w") as handle:
+        handle.write(f"{os.getpid()} {os.getppid()}\\n")
+    os.replace(path + ".tmp", path)
+    time.sleep(50)
+"""
+# Stands in for coreutils timeout when Quickshell's kill lands before timeout
+# forwards it: the command stays in the wrapper's process group, and a
+# signal ends only the wrapper.
+SILENT_TIMEOUT = """#!/usr/bin/env python3
+import os, subprocess, sys
+os.setpgid(0, 0)
+sys.exit(subprocess.call(sys.argv[2:]))
+"""
 
 
 def helper():
@@ -150,11 +173,87 @@ def run(host, language):
     return ok
 
 
+def alive(pid):
+    """True while `pid` is a running (not zombie) helper process."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+        cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return False
+    return stat.rsplit(")", 1)[1].split()[0] != "Z" and b"calendar-events.py" in cmdline
+
+
+def teardown(host):
+    """The shell quits during a month refresh: its bridge and worker go too."""
+    shell = (Path(__file__).parent / "runtime/Teardown.qml").read_text()
+    fakebin = {**FAKEBIN, "timeout": SILENT_TIMEOUT}
+    test = harness.Run(host, shell, plugin=ROOT, prefix="foamy-clock-teardown-", fakebin=fakebin)
+    fake_gi = test.base / "fakegi" / "gi"
+    fake_gi.mkdir(parents=True)
+    (fake_gi / "__init__.py").write_text(HANGING_GI)
+    test.env["PYTHONPATH"] = str(fake_gi.parent)
+    test.run(timeout=30)
+    record = Path(test.env["FOAMY_OUT"]) / "worker"
+    pids = [int(pid) for pid in record.read_text().split()] if record.exists() else []
+    left = []
+    if pids:
+        # The bridge and worker end shortly after their wrapper: the bridge
+        # gets its parent-death signal, and its handler kills the worker.
+        harness.wait_for(lambda: not any(alive(pid) for pid in pids), timeout=10)
+        left = [pid for pid in pids if alive(pid)]
+    for pid in left:
+        os.kill(pid, signal.SIGKILL)
+    ok = test.ok and len(pids) == 2 and not left
+    print(f"{'PASS' if ok else 'FAIL'} {host} teardown: worker and bridge {pids}, left running {left}")
+    if not test.ok:
+        print("\n".join(test.failures() or test.log.splitlines()[-30:]))
+    test.cleanup()
+    return ok
+
+
+def crash(host):
+    """The shell dies during a month refresh without stopping its helper
+    (SIGKILL, as a crash): the real wrapper, the bridge and the worker go too."""
+    shell = (Path(__file__).parent / "runtime/Teardown.qml").read_text()
+    test = harness.Run(host, shell, plugin=ROOT, prefix="foamy-clock-crash-", fakebin=FAKEBIN)
+    fake_gi = test.base / "fakegi" / "gi"
+    fake_gi.mkdir(parents=True)
+    (fake_gi / "__init__.py").write_text(HANGING_GI)
+    test.env["PYTHONPATH"] = str(fake_gi.parent)
+    test.env["FOAMY_TEARDOWN"] = "crash"
+    record = Path(test.env["FOAMY_OUT"]) / "worker"
+    pids = []
+    left = []
+    test.start()
+    try:
+        if test.wait_for_log("FOAMY WORKER RUNNING", timeout=30) and record.exists():
+            pids = [int(pid) for pid in record.read_text().split()]
+            # The bridge's parent is the `timeout` wrapper.
+            pids.append(int(Path(f"/proc/{pids[1]}/stat").read_text().rsplit(")", 1)[1].split()[1]))
+            # Only the shell itself: `timeout` keeps the helpers in a process
+            # group of their own, which the harness's group kill never reaches.
+            os.kill(test.process.pid, signal.SIGKILL)
+            test.process.wait()
+            harness.wait_for(lambda: not any(alive(pid) for pid in pids), timeout=10)
+            left = [pid for pid in pids if alive(pid)]
+    finally:
+        for pid in left:
+            os.kill(pid, signal.SIGKILL)
+        test.stop()
+    ok = len(pids) == 3 and not left and not test.failures()
+    print(f"{'PASS' if ok else 'FAIL'} {host} crash: worker, bridge and wrapper {pids}, left running {left}")
+    if not ok:
+        print("\n".join(test.failures() or test.log.splitlines()[-30:]))
+    test.cleanup()
+    return ok
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--language", default=None, choices=("en", "no"))
     args = parser.parse_args()
-    ok = True
+    ok = teardown("4.5")
+    ok &= crash("4.5")
     for language in [args.language] if args.language else ["en", "no"]:
         ok &= run("4.5", language)
     return 0 if ok else 1

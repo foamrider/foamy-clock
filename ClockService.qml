@@ -403,7 +403,11 @@ QtObject {
     return Array.isArray(dots) ? dots : []
   }
 
+  // A date the agenda could not load. With the agenda off no date is loaded
+  // on purpose, so none is incomplete.
   function dateIsIncomplete(key) {
+    if (!root.agendaEnabled)
+      return false
     var day = root.monthIsCurrent() ? root.monthView.dates[key] : null
     return !day || day.state !== "ok"
   }
@@ -504,7 +508,10 @@ QtObject {
   }
 
   property Process agendaProcess: Process {
-    command: ["timeout",
+    // `timeout` keeps the helper in a process group of its own. If the shell
+    // dies without stopping it (a crash), setpriv's parent-death signal makes
+    // timeout pass SIGTERM on to the bridge and its worker.
+    command: ["setpriv", "--pdeathsig", "TERM", "timeout",
       // One month worker has a 45-second deadline; also bound the bridge.
       "55s", "nice", "-n", "10", "python3", root.helperPath, "--range-start", root.agendaProcessRangeStartKey, "--range-end", root.agendaProcessRangeEndKey, "--max-age", String(root.agendaForceRefresh ? 0 : root.agendaRefreshIntervalMs / 1000)].concat(root.agendaPrefetch ? ["--cache-only"] : [])
     stdout: SplitParser {
