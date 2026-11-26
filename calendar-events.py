@@ -37,8 +37,10 @@ MAX_EVENTS = 100
 MAX_SOURCES = 32
 MAX_OCCURRENCES = 2048
 # The lookups of moved occurrences have a bound of their own, so that
-# MAX_OCCURRENCES still counts the expansion only: the components they read
-# per calendar, each lookup counting one more.
+# MAX_OCCURRENCES still counts the expansion only. It bounds their work: the
+# components read per calendar, each lookup counting one more. EDS hands a
+# lookup's components over whole, so the worker's memory limit and deadline,
+# not this bound, limit the transfer.
 MAX_LOOKUP_COMPONENTS = 4096
 MAX_RESPONSE_BYTES = 256 * 1024
 MAX_MONTH_EVENTS = 1000
@@ -239,8 +241,6 @@ def master_occurrence(component: Any, start: int | str, ecal: Any) -> bool:
     if not ecal.util_component_has_recurrences(component):
         return False
     recurrence = component.get_recurrenceid()
-    if recurrence.is_null_time():
-        return True
     if recurrence.is_date():
         return ical_date(recurrence).isoformat() == start
     return recurrence.is_utc() and unix_timestamp(recurrence, None) == start
@@ -300,8 +300,9 @@ def moved_occurrences(client: Any, found: list, default_timezone: Any, ecal: Any
     the instance's own time lies in the asked range, so an occurrence moved
     out of the range still shows on its old date. One lookup per recurring
     event, after the expansion, finds the detached instances wherever they
-    lie. Once the lookups have read MAX_LOOKUP_COMPONENTS, the events not
-    yet checked are shown as they are, their dates marked incomplete.
+    lie. Once the lookups have read MAX_LOOKUP_COMPONENTS components, the
+    events not yet checked are shown as they are, their dates marked
+    incomplete.
     """
     moved = set()
     budget = MAX_LOOKUP_COMPONENTS

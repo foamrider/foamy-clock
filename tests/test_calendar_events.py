@@ -3,6 +3,8 @@
 import contextlib
 import importlib.util
 import json
+import os
+import shutil
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -29,9 +31,6 @@ class FakeDate:
     def __init__(self, day):
         self.day = day
 
-    def is_null_time(self):
-        return False
-
     def is_date(self):
         return True
 
@@ -52,9 +51,6 @@ class FakeDateTime:
     def __init__(self, wall, zone):
         self.wall = wall
         self.zone = zone
-
-    def is_null_time(self):
-        return False
 
     def is_date(self):
         return False
@@ -81,7 +77,6 @@ def november(day, hour=None, zone=OSLO):
 # and the zones the calendar resolves by TZID; it knows no other TZID.
 PLUS_TWO = timezone(timedelta(hours=2), "Custom UTC+02")
 CALENDAR_ZONES = {"Europe/Oslo": OSLO, "Custom UTC+02": PLUS_TWO}
-NULL_TIME = SimpleNamespace(is_null_time=lambda: True)
 
 
 def master(uid, times, title=None):
@@ -98,7 +93,134 @@ def master(uid, times, title=None):
 
 def single(uid, times):
     """A single event's occurrence: no rule and no RECURRENCE-ID."""
-    return (uid, False, NULL_TIME, *times, uid.title())
+    return (uid, False, None, *times, uid.title())
+
+
+# A local Evolution calendar with weekly events from 6 November 2026 whose
+# occurrences were moved (detached instances), for the private
+# evolution-data-server test: out of the November view (a timed, an all-day
+# and an unknown-zone event), onto another moved occurrence's old time, and
+# swapped; the last two keep the series' rule, as an app can leave it.
+MOVED_CALENDAR = """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//foamy-clock//moved occurrences//EN
+BEGIN:VTIMEZONE
+TZID:Europe/Oslo
+BEGIN:STANDARD
+DTSTART:19701025T030000
+RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU
+TZOFFSETFROM:+0200
+TZOFFSETTO:+0100
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:19700329T020000
+RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU
+TZOFFSETFROM:+0100
+TZOFFSETTO:+0200
+END:DAYLIGHT
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:weekly@foamy-clock.test
+DTSTAMP:20261101T000000Z
+DTSTART;TZID=Europe/Oslo:20261106T090000
+DTEND;TZID=Europe/Oslo:20261106T100000
+RRULE:FREQ=WEEKLY;COUNT=8
+SUMMARY:Weekly
+END:VEVENT
+BEGIN:VEVENT
+UID:weekly@foamy-clock.test
+DTSTAMP:20261101T000000Z
+RECURRENCE-ID;TZID=Europe/Oslo:20261127T090000
+DTSTART;TZID=Europe/Oslo:20270115T090000
+DTEND;TZID=Europe/Oslo:20270115T100000
+SUMMARY:Weekly moved away
+END:VEVENT
+BEGIN:VEVENT
+UID:all-day@foamy-clock.test
+DTSTAMP:20261101T000000Z
+DTSTART;VALUE=DATE:20261106
+DTEND;VALUE=DATE:20261107
+RRULE:FREQ=WEEKLY;COUNT=8
+SUMMARY:All day
+END:VEVENT
+BEGIN:VEVENT
+UID:all-day@foamy-clock.test
+DTSTAMP:20261101T000000Z
+RECURRENCE-ID;VALUE=DATE:20261127
+DTSTART;VALUE=DATE:20270115
+DTEND;VALUE=DATE:20270116
+SUMMARY:All day moved away
+END:VEVENT
+BEGIN:VEVENT
+UID:unknown-zone@foamy-clock.test
+DTSTAMP:20261101T000000Z
+DTSTART;TZID=Nowhere/Unknown:20261106T160000
+DTEND;TZID=Nowhere/Unknown:20261106T170000
+RRULE:FREQ=WEEKLY;COUNT=8
+SUMMARY:Unknown zone
+END:VEVENT
+BEGIN:VEVENT
+UID:unknown-zone@foamy-clock.test
+DTSTAMP:20261101T000000Z
+RECURRENCE-ID;TZID=Nowhere/Unknown:20261127T160000
+DTSTART;TZID=Nowhere/Unknown:20270115T160000
+DTEND;TZID=Nowhere/Unknown:20270115T170000
+SUMMARY:Unknown zone moved away
+END:VEVENT
+BEGIN:VEVENT
+UID:overlap@foamy-clock.test
+DTSTAMP:20261101T000000Z
+DTSTART;TZID=Europe/Oslo:20261106T100000
+DTEND;TZID=Europe/Oslo:20261106T110000
+RRULE:FREQ=WEEKLY;COUNT=8
+SUMMARY:Overlap
+END:VEVENT
+BEGIN:VEVENT
+UID:overlap@foamy-clock.test
+DTSTAMP:20261101T000000Z
+RECURRENCE-ID;TZID=Europe/Oslo:20261120T100000
+DTSTART;TZID=Europe/Oslo:20261127T100000
+DTEND;TZID=Europe/Oslo:20261127T110000
+RRULE:FREQ=WEEKLY;COUNT=8
+SUMMARY:Overlap from 20 Nov
+END:VEVENT
+BEGIN:VEVENT
+UID:overlap@foamy-clock.test
+DTSTAMP:20261101T000000Z
+RECURRENCE-ID;TZID=Europe/Oslo:20261127T100000
+DTSTART;TZID=Europe/Oslo:20270115T100000
+DTEND;TZID=Europe/Oslo:20270115T110000
+RRULE:FREQ=WEEKLY;COUNT=8
+SUMMARY:Overlap moved away
+END:VEVENT
+BEGIN:VEVENT
+UID:swap@foamy-clock.test
+DTSTAMP:20261101T000000Z
+DTSTART;TZID=Europe/Oslo:20261106T120000
+DTEND;TZID=Europe/Oslo:20261106T130000
+RRULE:FREQ=WEEKLY;COUNT=8
+SUMMARY:Swap
+END:VEVENT
+BEGIN:VEVENT
+UID:swap@foamy-clock.test
+DTSTAMP:20261101T000000Z
+RECURRENCE-ID;TZID=Europe/Oslo:20261120T120000
+DTSTART;TZID=Europe/Oslo:20261127T120000
+DTEND;TZID=Europe/Oslo:20261127T130000
+RRULE:FREQ=WEEKLY;COUNT=8
+SUMMARY:Swap from 20 Nov
+END:VEVENT
+BEGIN:VEVENT
+UID:swap@foamy-clock.test
+DTSTAMP:20261101T000000Z
+RECURRENCE-ID;TZID=Europe/Oslo:20261127T120000
+DTSTART;TZID=Europe/Oslo:20261120T120000
+DTEND;TZID=Europe/Oslo:20261120T130000
+RRULE:FREQ=WEEKLY;COUNT=8
+SUMMARY:Swap from 27 Nov
+END:VEVENT
+END:VCALENDAR
+"""
 
 
 def placed(uid, times, recurrence_id, title, rule_left=False):
@@ -1038,9 +1160,8 @@ class CalendarEventsTest(unittest.TestCase):
         `occurrences` are what libecal yields, in its order, after `cancelled`
         cancelled ones: master(), single() and placed(). `detached` maps a
         UID to its detached instances: (RECURRENCE-ID, own start or None).
-        The calendar knows the zones in CALENDAR_ZONES: tzlookup_cb gives
-        None for another TZID, get_timezone_sync fails for it, as in EDS.
-        Returns the month, the error and the UIDs looked up; `self.read`
+        The calendar knows the zones in CALENDAR_ZONES; tzlookup_cb gives
+        None for another TZID, as in EDS. Returns the month, the error and the UIDs looked up; `self.read`
         counts the components read.
         """
         lookups = []
@@ -1087,7 +1208,6 @@ class CalendarEventsTest(unittest.TestCase):
         client = SimpleNamespace(
             set_default_timezone=lambda _zone: None,
             get_default_timezone=lambda: OSLO,
-            get_timezone_sync=lambda tzid, _cancellable: (True, CALENDAR_ZONES[tzid]),
             generate_instances_sync=generate,
             get_objects_for_uid_sync=objects_for_uid,
         )
@@ -1313,6 +1433,90 @@ class CalendarEventsTest(unittest.TestCase):
         client = SimpleNamespace(get_default_timezone=lambda: oslo)
         instant = CALENDAR_EVENTS.component_time(moved.get_recurid().get_datetime(), client, oslo, ecal)
         self.assertEqual(datetime.fromtimestamp(instant, timezone.utc), datetime(2026, 11, 27, 8, tzinfo=timezone.utc))
+
+    def test_real_evolution_leaves_out_only_occurrences_moved_away(self):
+        """The worker's November view on a private evolution-data-server (its
+        own bus from dbus-run-session, a temporary HOME) with MOVED_CALENDAR:
+        the occurrences moved out of the view are gone, the instances moved
+        into it stay, and the month is complete.
+
+        It rests on libecal: the master's occurrences carry their start as
+        RECURRENCE-ID and a detached instance its own, the lookup by UID
+        returns every detached instance, and ECal.Client.tzlookup_cb gives
+        None for an unknown TZID. Were one of these to change, an occurrence
+        moved away would show, one moved in would vanish, or the calendar
+        would fail.
+        """
+        try:
+            import gi
+
+            gi.require_version("ECal", "2.0")
+            gi.require_version("EDataServer", "1.2")
+            gi.require_version("ICalGLib", "4.0")
+        except (ImportError, ValueError):
+            self.skipTest("Evolution Data Server not installed")
+        services = [
+            service
+            for folder in ("/usr/share", "/usr/local/share")
+            for service in Path(folder, "dbus-1", "services").glob("org.gnome.evolution.dataserver.Calendar*.service")
+        ]
+        if not services or shutil.which("dbus-run-session") is None:
+            self.skipTest("no Evolution calendar service or dbus-run-session")
+        kit = os.environ.get("FOAMY_KIT", Path.home() / "GitHub/Personal/foamy-kit")
+        hostenv_path = Path(kit, "preview", "hostenv.py")
+        if not hostenv_path.is_file():
+            self.skipTest("no foamy-kit checkout (FOAMY_KIT) for its hostenv.ProcessGroup")
+        spec = importlib.util.spec_from_file_location("hostenv", hostenv_path)
+        hostenv = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(hostenv)
+        with TemporaryDirectory() as directory:
+            base = Path(directory)
+            calendar = base / "data" / "evolution" / "calendar" / "system"
+            calendar.mkdir(parents=True)
+            (calendar / "calendar.ics").write_text(MOVED_CALENDAR)
+            for name in ("home", "config", "cache", "state"):
+                (base / name).mkdir()
+            (base / "runtime").mkdir(mode=0o700)
+            # Nothing of the session reaches EDS: its own HOME and XDG dirs,
+            # settings in memory, no system bus; dbus-run-session gives it a
+            # bus of its own. MALLOC_ARENA_MAX as the bridge starts the worker.
+            env = {
+                "PATH": "/usr/bin:/bin",
+                "HOME": str(base / "home"),
+                "XDG_CONFIG_HOME": str(base / "config"),
+                "XDG_DATA_HOME": str(base / "data"),
+                "XDG_CACHE_HOME": str(base / "cache"),
+                "XDG_STATE_HOME": str(base / "state"),
+                "XDG_RUNTIME_DIR": str(base / "runtime"),
+                "GSETTINGS_BACKEND": "memory",
+                "GIO_USE_VFS": "local",
+                "GIO_USE_NETWORK_MONITOR": "base",
+                "DBUS_SYSTEM_BUS_ADDRESS": f"unix:path={base}/no-system-bus",
+                "LANG": "C.UTF-8",
+                "TZ": "Europe/Oslo",
+                "MALLOC_ARENA_MAX": "2",
+            }
+            command = ["dbus-run-session", "--", sys.executable, "-I", str(MODULE_PATH), "--worker"]
+            command += ["--range-start", "2026-10-26", "--range-end", "2026-12-07"]
+            output = base / "month.json"
+            # The bus and the EDS services it starts share the group, which
+            # stop() ends when the block is left.
+            with (
+                output.open("wb") as stdout,
+                hostenv.ProcessGroup(command, env=env, stdout=stdout, stderr=subprocess.DEVNULL) as worker,
+            ):
+                status = worker.wait(CALENDAR_EVENTS.WORKER_SECONDS)
+            raw = output.read_bytes()
+        self.assertEqual(status, 0)
+        month = json.loads(raw)
+        self.assertTrue(CALENDAR_EVENTS.valid_payload(month))
+        shown = {key: self.titles(month, key) for key in ("2026-11-20", "2026-11-27")}
+        expected = {
+            "2026-11-20": ["All day", "Swap from 27 Nov", "Unknown zone", "Weekly"],
+            "2026-11-27": ["Overlap from 20 Nov", "Swap from 20 Nov"],
+        }
+        self.assertEqual(shown, expected)
+        self.assertEqual((month["state"], month["complete"]), ("ok", True))
 
     def test_local_timezone_accepts_paths_names_and_bad_values(self):
         oslo = Path("/usr/share/zoneinfo/Europe/Oslo")
