@@ -27,8 +27,9 @@ import "plugin/kit/FoamyIpcResolver.js" as IpcResolver
 //     button's right and middle clicks;
 //  9. the settings page: a refused calendar app typed into its field, a
 //     refused custom date locale, the bar format previews, the refresh
-//     dropdown saves and follows the setting, the agenda switch, an invalid
-//     value, Esc;
+//     dropdown saves and follows the setting, a refused pick in each
+//     dropdown gives way to the saved value at once, the agenda switch, an
+//     invalid value, Esc;
 // 10. the calendar shortcut: a hostile stored name, a missing app, a present
 //     app (fake omarchy-cmd-present and omarchy-launch-or-focus);
 // 11. every helper run's arguments were accepted, and the first background
@@ -64,6 +65,7 @@ ShellRoot {
       unavailable: "Kalender utilgjengelig",
       noData: "Kalenderdata er utilgjengelige",
       notAllowed: "Den verdien er ikke tillatt.",
+      noEntry: "Innstillingene kan ikke lagres: modulen har ingen oppføring i linjen.",
       pasteFailed: "Kunne ikke lime inn fra utklippstavlen. Kopier ren tekst og prøv igjen.",
       launchFailed: "Kalenderappen kunne ikke startes."
     }) : ({
@@ -76,6 +78,7 @@ ShellRoot {
       unavailable: "Calendar unavailable",
       noData: "Calendar data is unavailable",
       notAllowed: "That value isn't allowed.",
+      noEntry: "Settings can't be saved: this widget has no bar entry.",
       pasteFailed: "Could not paste clipboard text. Copy plain text and try again.",
       launchFailed: "Calendar app could not be started."
     })
@@ -774,6 +777,27 @@ ShellRoot {
       settingsCheck()
     })
   }
+  // The host empties a widget's moduleName when its bar entry goes away, and
+  // the save queue then refuses every save. A refused pick in any dropdown
+  // of the page, the bar formats' too, gives way to the saved value at once,
+  // instead of staying on show next to the error until its hold runs out.
+  function refusedPicksCheck(view) {
+    var page = find(view, it => it.formatsOpen !== undefined)
+    page.formatsOpen = true
+    var dropdowns = findAll(page, it => typeof it.select === "function" && it.shownValue !== undefined)
+    eq(dropdowns.length, 9, "the settings page has nine dropdowns with the bar formats open")
+    widget(0).moduleName = ""
+    for (var i = 0; i < dropdowns.length; i++) {
+      var dropdown = dropdowns[i]
+      var saved = dropdown.value
+      var pick = dropdown.options.map(o => dropdown.optionValue(o)).filter(v => v !== saved && v !== "__custom")[0]
+      dropdown.select(pick)
+      eq(widget(0).settingsError, texts.noEntry, dropdown.label + ": the pick of " + JSON.stringify(pick) + " is refused without a bar entry")
+      eq(dropdown.shownValue, saved, dropdown.label + ": the refused pick gives way to the saved value at once")
+    }
+    widget(0).moduleName = "foamy.clock"
+    page.formatsOpen = false
+  }
   function settingsCheck() {
     var service = Clock.ClockService
     var view = panel(0).popup.bodyItem
@@ -796,6 +820,7 @@ ShellRoot {
     widget(0).save("agendaRefreshMinutes", 120)
     eq(dropdown.value, "120", "and follows a change made outside the page")
     eq(service.refreshMinutes, 120, "the leader feeds the new interval to the engine")
+    refusedPicksCheck(view)
     // The agenda switch: off hides the agenda at once.
     var agenda = find(view, it => it.switchItem !== undefined && it.label === Kit.FoamyI18n.t("Show agenda"))
     agenda.clicked()

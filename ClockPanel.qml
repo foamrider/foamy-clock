@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -141,6 +142,7 @@ Panel {
         saving: root.hostWidget ? root.hostWidget.saving : false
         settingsError: root.hostWidget ? root.hostWidget.settingsError : ""
         retryable: root.hostWidget ? root.hostWidget.canRetry : false
+        queue: root.hostWidget ? root.hostWidget.queue : null
         launchError: root.launchError
         onCloseRequestedByView: root.editingSettings ? root.closeSettings() : root.close()
         onSettingsRequested: root.openSettings()

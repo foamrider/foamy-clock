@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import "kit"
 import "kit/FoamyPrefs.js" as Prefs
@@ -11,6 +12,9 @@ FoamySettingsPage {
 
   property var settings: ({})
   property bool formatsOpen: false
+  // The FoamyPrefsQueue behind save(): each dropdown is linked to it with its
+  // key, so a pick the queue refuses gives way to the saved value at once.
+  property FoamyPrefsQueue queue: null
   signal save(string key, var value)
 
   function current(key) {
@@ -71,6 +75,8 @@ FoamySettingsPage {
       label: root.label(field.key)
       labelDelegate: field.glyphLabels ? glyphLabel : null
       value: field.customMode ? "__custom" : String(field.value)
+      queue: root.queue
+      queueKey: field.key
       options: field.presets.concat([
         {
           value: "__custom",
@@ -190,6 +196,8 @@ FoamySettingsPage {
       compact: true
       label: root.label("weekStartDay")
       value: String(root.current("weekStartDay"))
+      queue: root.queue
+      queueKey: "weekStartDay"
       // Options are locale, monday … sunday; index % 7 is Locale.Monday … Locale.Sunday (0).
       options: Schema.field("weekStartDay").options.map(function (day, index) {
         if (day === "locale")
@@ -211,6 +219,8 @@ FoamySettingsPage {
       compact: true
       label: root.label("timeFormat")
       value: String(root.current("timeFormat"))
+      queue: root.queue
+      queueKey: "timeFormat"
       options: [
         {
           value: "24-hour",
@@ -285,6 +295,8 @@ FoamySettingsPage {
       compact: true
       label: root.label("agendaRefreshMinutes")
       value: String(root.current("agendaRefreshMinutes"))
+      queue: root.queue
+      queueKey: "agendaRefreshMinutes"
       options: Schema.refreshOptions(root.current("agendaRefreshMinutes")).map(function (minutes) {
         return {
           value: String(minutes),
@@ -301,6 +313,8 @@ FoamySettingsPage {
       compact: true
       label: root.label("agendaMonthsAhead")
       value: String(root.current("agendaMonthsAhead"))
+      queue: root.queue
+      queueKey: "agendaMonthsAhead"
       options: [0, 1, 2, 3, 4, 5, 6].map(function (months) {
         return {
           value: String(months),

@@ -29,6 +29,8 @@ PanelKeyCatcher {
   property bool saving: false
   property string settingsError: ""
   property bool retryable: false
+  // The queue the settings save through (SettingsPane.queue).
+  property FoamyPrefsQueue queue: null
   property string launchError: ""
   readonly property alias settingsBackTarget: settingsPage.backTarget
 
@@ -760,6 +762,7 @@ PanelKeyCatcher {
     saving: root.saving
     error: root.settingsError
     retryable: root.retryable && root.settingsError !== ""
+    queue: root.queue
     onBack: root.settingsClosed()
     onRetry: root.retryRequested()
     onSave: function (key, value) {
