@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -49,10 +50,6 @@ Panel {
   }
   function closeSettings() {
     settingsState.hide()
-    Qt.callLater(function () {
-      if (popup.bodyItem)
-        popup.bodyItem.forceActiveFocus()
-    })
   }
   onOpenedChanged: if (!opened)
     launchError = ""
@@ -141,6 +138,7 @@ Panel {
         saving: root.hostWidget ? root.hostWidget.saving : false
         settingsError: root.hostWidget ? root.hostWidget.settingsError : ""
         retryable: root.hostWidget ? root.hostWidget.canRetry : false
+        queue: root.hostWidget ? root.hostWidget.queue : null
         launchError: root.launchError
         onCloseRequestedByView: root.editingSettings ? root.closeSettings() : root.close()
         onSettingsRequested: root.openSettings()

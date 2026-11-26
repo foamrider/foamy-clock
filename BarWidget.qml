@@ -35,6 +35,8 @@ BarWidget {
   readonly property string settingsError: prefs.error !== "" ? tr(prefs.error) : ""
   readonly property bool saving: prefs.busy
   readonly property bool canRetry: prefs.canRetry
+  // For the settings page's dropdowns, which end a pick this queue refuses.
+  readonly property FoamyPrefsQueue queue: prefs
 
   // Inline when the host allows it (instant, no process), else one
   // `omarchy bar set` at a time; the newest value per key wins.

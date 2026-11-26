@@ -76,6 +76,7 @@
   "Start weeks on %1": "Start weeks on %1",
   "That value isn't allowed.": "That value isn't allowed.",
   "The bar shows seconds when its format has them": "The bar shows seconds when its format has them",
+  "The saved list in shell.json isn't valid, so it wasn't replaced.": "The saved list in shell.json isn't valid, so it wasn't replaced.",
   "Time format": "Time format",
   "Today": "Today",
   "Undo": "Undo",

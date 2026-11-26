@@ -49,7 +49,10 @@ The calendar shortcut opens GNOME Calendar by default; change it in settings.
 ## Agenda behavior
 
 The agenda preloads event summaries for all 42 dates in the visible month grid
-with one range query per selected calendar. Event dots and daily agendas use the
+with one range query per selected calendar. Each recurring event in it also
+gets one lookup of its moved occurrences: Evolution's range query misses an
+occurrence that was moved out of the 42 days and would show it on its old
+date. Event dots and daily agendas use the
 same data. Selecting a loaded day, including an empty day, is immediate and does
 not query Evolution or interrupt a background refresh.
 
@@ -85,7 +88,14 @@ locations, and calendar names have fixed length limits. The panel renders up to
 five calendar markers per date and only creates visible agenda rows.
 
 Queries allow 32 selected calendars, two active clients, and 2,048 occurrence
-callbacks per source. Worker processes retain the 512 MiB virtual-memory limit
+callbacks per source. The lookups of recurring events have a limit on their
+work: per source they read at most 4,096 components, counting each lookup and
+the event and changed occurrences it returns. Evolution hands over a lookup's
+components whole, so the memory limit and deadline below bound the transfer.
+Past the limit, the dates of the events left unchecked are marked incomplete;
+like a date whose refresh failed, such a date keeps its last complete cached
+day and does not update while the limit is exceeded. Worker
+processes retain the 512 MiB virtual-memory limit
 and 45-second deadline. The bridge bounds the full month before parsing it, then
 sends at most twelve bounded messages (256 KiB each) to the shell. The shell also
 checks the assembled month and replaces its previous view only after receiving

@@ -20,31 +20,6 @@ ClockPanel.qml: missing-property: Member "settingsBackTarget" not found on type 
 ClockPanel.qml: missing-property: Member "settingsOpened" not found on type "QQuickItem" | popup.bodyItem.settingsOpened()
 ClockPanel.qml: missing-property: Member "switchPanelFrom" not found on type "QObject" | if (root.bar && typeof root.bar.switchPanelFrom === "function")
 ClockPanel.qml: missing-property: Member "switchPanelFrom" not found on type "QObject" | return root.bar.switchPanelFrom(root.barIdentity, direction)
-ClockPanel.qml: unqualified: Unqualified access | availableHeight: popup.availableCardHeight
-ClockPanel.qml: unqualified: Unqualified access | editingSettings: root.editingSettings
-ClockPanel.qml: unqualified: Unqualified access | if (root.hostWidget)
-ClockPanel.qml: unqualified: Unqualified access | launchError: root.launchError
-ClockPanel.qml: unqualified: Unqualified access | onCalendarRequested: root.openCalendar()
-ClockPanel.qml: unqualified: Unqualified access | onCloseRequestedByView: root.editingSettings ? root.closeSettings() : root.close()
-ClockPanel.qml: unqualified: Unqualified access | onCloseRequestedByView: root.editingSettings ? root.closeSettings() : root.close()
-ClockPanel.qml: unqualified: Unqualified access | onCloseRequestedByView: root.editingSettings ? root.closeSettings() : root.close()
-ClockPanel.qml: unqualified: Unqualified access | onRetryRequested: if (root.hostWidget)
-ClockPanel.qml: unqualified: Unqualified access | onSettingsClosed: root.closeSettings()
-ClockPanel.qml: unqualified: Unqualified access | onSettingsRequested: root.openSettings()
-ClockPanel.qml: unqualified: Unqualified access | onWeekStartToggleRequested: if (root.hostWidget)
-ClockPanel.qml: unqualified: Unqualified access | opened: root.opened
-ClockPanel.qml: unqualified: Unqualified access | retryable: root.hostWidget ? root.hostWidget.canRetry : false
-ClockPanel.qml: unqualified: Unqualified access | retryable: root.hostWidget ? root.hostWidget.canRetry : false
-ClockPanel.qml: unqualified: Unqualified access | root.hostWidget.retrySave()
-ClockPanel.qml: unqualified: Unqualified access | root.hostWidget.save(key, value)
-ClockPanel.qml: unqualified: Unqualified access | root.hostWidget.toggleWeekStart()
-ClockPanel.qml: unqualified: Unqualified access | root.switchPanel(direction)
-ClockPanel.qml: unqualified: Unqualified access | saving: root.hostWidget ? root.hostWidget.saving : false
-ClockPanel.qml: unqualified: Unqualified access | saving: root.hostWidget ? root.hostWidget.saving : false
-ClockPanel.qml: unqualified: Unqualified access | settings: root.settings
-ClockPanel.qml: unqualified: Unqualified access | settingsError: root.hostWidget ? root.hostWidget.settingsError : ""
-ClockPanel.qml: unqualified: Unqualified access | settingsError: root.hostWidget ? root.hostWidget.settingsError : ""
-ClockPanel.qml: unqualified: Unqualified access | verticalInset: popup.verticalContentInset
 ClockService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var index of day.events) {
 ClockService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var key of Object.keys(month.dates)) {
 ClockService.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var offset = 0; offset <= ahead; offset++) {
@@ -135,12 +110,6 @@ ClockView.qml: unqualified: Unqualified access | width: root.cellWidth
 ClockView.qml: unqualified: Unqualified access | width: root.cellWidth
 ClockView.qml: unqualified: Unqualified access | width: root.gutterWidth
 ClockView.qml: unqualified: Unqualified access | width: root.weekColumnWidth
-SettingsPane.qml: unqualified: Unqualified access | label: root.label(field.key)
-SettingsPane.qml: unqualified: Unqualified access | labelDelegate: field.glyphLabels ? glyphLabel : null
-SettingsPane.qml: unqualified: Unqualified access | presets: root.formatOptions(modelData)
-SettingsPane.qml: unqualified: Unqualified access | readonly property var value: root.current(key)
-SettingsPane.qml: unqualified: Unqualified access | root.save(field.key, next)
-SettingsPane.qml: unqualified: Unqualified access | root.save(field.key, next)
 preview/Preview.qml: unqualified: Unqualified access | availableHeight: popup.availableCardHeight
 preview/Preview.qml: unqualified: Unqualified access | editingSettings: preview.previewState.indexOf("settings") === 0
 preview/Preview.qml: unqualified: Unqualified access | settingsError: preview.previewState === "settings-error" ? "Couldn't save the setting." : ""
