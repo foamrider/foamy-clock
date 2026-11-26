@@ -89,7 +89,7 @@ five calendar markers per date and only creates visible agenda rows.
 
 Queries allow 32 selected calendars, two active clients, and 2,048 occurrence
 callbacks per source; each lookup of a recurring event counts toward that
-limit, and so do the event and each moved occurrence it returns. Worker
+limit, and so do the event and each changed occurrence it returns. Worker
 processes retain the 512 MiB virtual-memory limit
 and 45-second deadline. The bridge bounds the full month before parsing it, then
 sends at most twelve bounded messages (256 KiB each) to the shell. The shell also

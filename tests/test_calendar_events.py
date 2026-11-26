@@ -29,9 +29,6 @@ class FakeDate:
     def __init__(self, day):
         self.day = day
 
-    def is_null_time(self):
-        return False
-
     def is_date(self):
         return True
 
@@ -46,14 +43,12 @@ class FakeDate:
 
 
 class FakeDateTime:
-    """An ICalGLib DATE-TIME: a wall-clock time read in its zone (None: floating)."""
+    """An ICalGLib DATE-TIME: a wall-clock time and the zone it carries (None:
+    none of its own, as for a floating time or one written with a TZID)."""
 
     def __init__(self, wall, zone):
         self.wall = wall
         self.zone = zone
-
-    def is_null_time(self):
-        return False
 
     def is_date(self):
         return False
@@ -65,12 +60,34 @@ class FakeDateTime:
         return int(self.wall.replace(tzinfo=zone).timestamp())
 
 
-def november(day, hour=None):
-    """An occurrence's start and end on that day of November 2026: an hour
-    from `hour` in Oslo, or the whole day."""
+def november(day, hour=None, zone=OSLO):
+    """An occurrence's start and end on that day of November 2026, as libecal
+    yields them (zone resolved): an hour from `hour`, or the whole day."""
     if hour is None:
         return FakeDate(date(2026, 11, day)), FakeDate(date(2026, 11, day + 1))
-    return FakeDateTime(datetime(2026, 11, day, hour), OSLO), FakeDateTime(datetime(2026, 11, day, hour + 1), OSLO)
+    return FakeDateTime(datetime(2026, 11, day, hour), zone), FakeDateTime(datetime(2026, 11, day, hour + 1), zone)
+
+
+# A zone only the fake calendar defines (libical has no such built-in zone),
+# and the zones the calendar resolves by TZID (ECal.Client.get_timezone_sync).
+PLUS_TWO = timezone(timedelta(hours=2), "Custom UTC+02")
+CALENDAR_ZONES = {"Europe/Oslo": OSLO, "Custom UTC+02": PLUS_TWO}
+
+
+def when(value, tzid=None):
+    """An ECalComponentDateTime: a value and the TZID it was written with."""
+    return SimpleNamespace(get_value=lambda: value, get_tzid=lambda: tzid)
+
+
+def written(wall, tzid):
+    """A DATE-TIME written with a TZID, as libecal hands it over: the value
+    has no zone of its own, only the TZID names one."""
+    return when(FakeDateTime(wall, None), tzid)
+
+
+def utc(wall):
+    """A DATE-TIME written in UTC (a Z time): libecal gives it its zone."""
+    return when(FakeDateTime(wall, timezone.utc), "UTC")
 
 
 class CalendarEventsTest(unittest.TestCase):
@@ -985,13 +1002,15 @@ class CalendarEventsTest(unittest.TestCase):
         still yields the master's occurrence on the old date, and only the
         lookup by UID returns the detached instance.
 
-        `occurrences` are (uid, recurring, start, end) in the order libecal
-        yields them, after `cancelled` cancelled ones; `detached` maps a UID to
-        the RECURRENCE-IDs of its detached instances. Returns the month, the
-        error and the UIDs looked up.
+        `occurrences` are (uid, recurring, start, end[, title]) in the order
+        libecal yields them, after `cancelled` cancelled ones; `recurring` is
+        whether the component carries a rule. `detached` maps a UID to its
+        detached instances: (RECURRENCE-ID, own start). Returns the month, the
+        error and the UIDs looked up; `self.read` counts the components read.
         """
         lookups = []
         generating = False
+        read = 0
 
         def generate(_start, _end, _cancellable, callback, _data):
             nonlocal generating
@@ -1000,10 +1019,11 @@ class CalendarEventsTest(unittest.TestCase):
                 for _ in range(cancelled):
                     if not callback(SimpleNamespace(get_status=lambda: "cancelled"), None, None, None, None):
                         return
-                for uid, recurring, start, end in occurrences:
+                for uid, recurring, start, end, *title in occurrences:
+                    summary = title[0] if title else uid.title()
                     component = SimpleNamespace(
                         get_status=lambda: "confirmed",
-                        get_summary=uid.title,
+                        get_summary=lambda summary=summary: summary,
                         get_location=lambda: "",
                         get_uid=lambda uid=uid: uid,
                         recurring=recurring,
@@ -1013,20 +1033,26 @@ class CalendarEventsTest(unittest.TestCase):
             finally:
                 generating = False
 
+        def component(recurrence_id, start):
+            def recurid():
+                nonlocal read
+                read += 1
+                return None if recurrence_id is None else SimpleNamespace(get_datetime=lambda: recurrence_id)
+
+            return SimpleNamespace(get_recurid=recurid, get_dtstart=lambda: start)
+
         def objects_for_uid(uid, _cancellable):
             self.assertFalse(generating, "a lookup inside generate_instances_sync's callback")
             lookups.append(uid)
             if failing_lookup:
                 raise OSError("the calendar backend went away")
-            master = SimpleNamespace(is_null_time=lambda: True)
-            return True, [
-                SimpleNamespace(get_icalcomponent=lambda rid=rid: SimpleNamespace(get_recurrenceid=lambda: rid))
-                for rid in [master, *detached.get(uid, [])]
-            ]
+            master = component(None, written(datetime(2026, 11, 6, 10), "Europe/Oslo"))
+            return True, [master, *(component(*instance) for instance in detached.get(uid, []))]
 
         client = SimpleNamespace(
             set_default_timezone=lambda _zone: None,
             get_default_timezone=lambda: OSLO,
+            get_timezone_sync=lambda tzid, _cancellable: (True, CALENDAR_ZONES[tzid]),
             generate_instances_sync=generate,
             get_objects_for_uid_sync=objects_for_uid,
         )
@@ -1040,6 +1066,7 @@ class CalendarEventsTest(unittest.TestCase):
         month, error = CALENDAR_EVENTS.fetch_source_events(
             SimpleNamespace(get_uid=lambda: "calendar"), "Work", "", start, start + timedelta(days=42), ecal, ical, OSLO
         )
+        self.read = read
         return month, error, lookups
 
     def titles(self, month, key):
@@ -1049,28 +1076,48 @@ class CalendarEventsTest(unittest.TestCase):
         """A weekly event's 27 November occurrence moved to 15 January (a
         detached instance) shows on neither date of the November view. Its
         RECURRENCE-ID is compared with the occurrence as an instant, an all-day
-        one by its date; one lookup per recurring event, none for a single one."""
+        one by its date: a TZID through the calendar, a floating time in the
+        default zone. One lookup per recurring event, none for a single one."""
+        away = written(datetime(2027, 1, 15, 10), "Europe/Oslo")
+        floating = when(FakeDateTime(datetime(2026, 11, 27, 10), None))
+        own_zone = written(datetime(2026, 11, 27, 10), "Custom UTC+02")
         rows = [
-            # name, the hour of the series (None: all day), the detached
-            # instance's RECURRENCE-ID, whether 27 November keeps the series
-            ("a time in the event's zone", 10, FakeDateTime(datetime(2026, 11, 27, 10), OSLO), False),
-            ("the same instant in UTC", 10, FakeDateTime(datetime(2026, 11, 27, 9), timezone.utc), False),
-            ("an all-day date", None, FakeDate(date(2026, 11, 27)), False),
-            ("10:00 in UTC, an hour later", 10, FakeDateTime(datetime(2026, 11, 27, 10), timezone.utc), True),
-            ("another date", 10, FakeDateTime(datetime(2026, 12, 25, 10), OSLO), True),
+            # name, the series' hour (None: all day) and zone, its detached
+            # instance (RECURRENCE-ID, own start), whether 27 November keeps it
+            ("in the event's zone", 10, OSLO, (written(datetime(2026, 11, 27, 10), "Europe/Oslo"), away), False),
+            ("the same instant in UTC", 10, OSLO, (utc(datetime(2026, 11, 27, 9)), away), False),
+            ("floating, in the default zone", 10, OSLO, (floating, away), False),
+            ("a zone of the calendar's own", 10, PLUS_TWO, (own_zone, away), False),
+            ("all day", None, OSLO, (when(FakeDate(date(2026, 11, 27))), when(FakeDate(date(2027, 1, 15)))), False),
+            ("10:00 in UTC, an hour later", 10, OSLO, (utc(datetime(2026, 11, 27, 10)), away), True),
+            ("another date", 10, OSLO, (written(datetime(2026, 12, 25, 10), "Europe/Oslo"), away), True),
         ]
-        for name, hour, recurrence_id, kept in rows:
+        for name, hour, zone, instance, kept in rows:
             with self.subTest(name):
                 occurrences = [
-                    ("weekly", True, *november(20, hour)),
-                    ("weekly", True, *november(27, hour)),
+                    ("weekly", True, *november(20, hour, zone)),
+                    ("weekly", True, *november(27, hour, zone)),
                     ("lunch", False, *november(27, 12)),
                 ]
-                month, error, lookups = self.fetch_series(occurrences, {"weekly": [recurrence_id]})
+                month, error, lookups = self.fetch_series(occurrences, {"weekly": [instance]})
                 self.assertEqual(self.titles(month, "2026-11-20"), ["Weekly"])
                 self.assertEqual(self.titles(month, "2026-11-27"), ["Lunch", "Weekly"] if kept else ["Lunch"])
                 self.assertEqual(lookups, ["weekly"])
                 self.assertEqual((month["state"], month["complete"], error), ("ok", True, ""))
+
+    def test_an_occurrence_edited_in_place_stays(self):
+        """An occurrence changed without a new time (renamed) is a detached
+        instance whose start is its RECURRENCE-ID, and libecal shows it. It
+        stays, also when it still carries the series' rule and so looks like
+        one of the master's occurrences."""
+        same_time = written(datetime(2026, 11, 27, 10), "Europe/Oslo")
+        for rule_left in (True, False):
+            with self.subTest(rule_left=rule_left):
+                occurrences = [("weekly", True, *november(20, 10)), ("weekly", rule_left, *november(27, 10), "Renamed")]
+                month, error, lookups = self.fetch_series(occurrences, {"weekly": [(same_time, same_time)]})
+                self.assertEqual(self.titles(month, "2026-11-20"), ["Weekly"])
+                self.assertEqual(self.titles(month, "2026-11-27"), ["Renamed"])
+                self.assertEqual((month["state"], error), ("ok", ""))
 
     def test_a_failed_lookup_of_moved_occurrences_is_never_a_full_result(self):
         month, error, lookups = self.fetch_series([("weekly", True, *november(27, 10))], {}, failing_lookup=True)
@@ -1081,10 +1128,11 @@ class CalendarEventsTest(unittest.TestCase):
         self.assertFalse(month["complete"])
 
     def test_moved_occurrence_lookups_count_in_the_occurrence_budget(self):
-        """Each lookup, and each instance it returns, counts as an occurrence:
+        """Each lookup, and each component it returns, counts as an occurrence:
         once MAX_OCCURRENCES is spent, the other recurring events go unchecked
         and the month says it is incomplete."""
-        moved = [FakeDateTime(datetime(2026, 12, day, 10), OSLO) for day in range(1, 10)]
+        away = written(datetime(2027, 1, 15, 10), "Europe/Oslo")
+        moved = [(written(datetime(2026, 12, day, 10), "Europe/Oslo"), away) for day in range(1, 10)]
         month, error, lookups = self.fetch_series(
             [("first", True, *november(20, 10)), ("second", True, *november(20, 12))],
             {"first": moved},
@@ -1092,6 +1140,22 @@ class CalendarEventsTest(unittest.TestCase):
         )
         self.assertEqual(lookups, ["first"])
         self.assertEqual(self.titles(month, "2026-11-20"), ["First", "Second"])
+        self.assertFalse(month["complete"])
+        self.assertEqual(error, "")
+
+    def test_a_lookup_stops_reading_once_the_occurrence_budget_is_spent(self):
+        """The last recurring event has more detached instances than
+        MAX_OCCURRENCES: reading them stops at the budget, and the month says
+        it is incomplete although no other event follows."""
+        away = written(datetime(2028, 1, 1, 10), "Europe/Oslo")
+        many = [
+            (written(datetime(2027, 1, 1) + timedelta(hours=hour), "Europe/Oslo"), away)
+            for hour in range(CALENDAR_EVENTS.MAX_OCCURRENCES + 100)
+        ]
+        month, error, lookups = self.fetch_series([("weekly", True, *november(20, 10))], {"weekly": many})
+        self.assertEqual(lookups, ["weekly"])
+        self.assertLessEqual(self.read, CALENDAR_EVENTS.MAX_OCCURRENCES)
+        self.assertEqual(self.titles(month, "2026-11-20"), ["Weekly"])
         self.assertFalse(month["complete"])
         self.assertEqual(error, "")
 
@@ -1114,6 +1178,36 @@ class CalendarEventsTest(unittest.TestCase):
         floating = ICalGLib.Time.new_from_string("20261030T090000")
         stamp = CALENDAR_EVENTS.unix_timestamp(floating, zone)
         self.assertEqual(datetime.fromtimestamp(stamp, ZoneInfo("Europe/Oslo")).strftime("%H:%M"), "09:00")
+
+    def test_real_libecal_recurrence_id_in_a_zone_of_the_calendar(self):
+        """A RECURRENCE-ID written with a TZID libical has no built-in zone
+        for is read in the zone the calendar defines, not the default zone."""
+        try:
+            import gi
+
+            gi.require_version("ECal", "2.0")
+            gi.require_version("ICalGLib", "4.0")
+            from gi.repository import ECal, ICalGLib
+        except (ImportError, ValueError):
+            self.skipTest("libecal not installed")
+        zone = ICalGLib.Timezone.new()
+        zone.set_component(
+            ICalGLib.Component.new_from_string(
+                "BEGIN:VTIMEZONE\nTZID:Custom UTC+02\nBEGIN:STANDARD\nDTSTART:19700101T000000\n"
+                "TZOFFSETFROM:+0200\nTZOFFSETTO:+0200\nEND:STANDARD\nEND:VTIMEZONE"
+            )
+        )
+        moved = ECal.Component.new_from_string(
+            "BEGIN:VEVENT\nUID:moved\nDTSTAMP:20261101T000000Z\n"
+            "RECURRENCE-ID;TZID=Custom UTC+02:20261127T100000\nDTSTART;TZID=Custom UTC+02:20270115T100000\nEND:VEVENT"
+        )
+        oslo = ICalGLib.Timezone.get_builtin_timezone("Europe/Oslo")
+        client = SimpleNamespace(
+            get_timezone_sync=lambda tzid, _cancellable: (True, {"Custom UTC+02": zone}[tzid]),
+            get_default_timezone=lambda: oslo,
+        )
+        instant = CALENDAR_EVENTS.component_time(moved.get_recurid().get_datetime(), client, oslo)
+        self.assertEqual(datetime.fromtimestamp(instant, timezone.utc), datetime(2026, 11, 27, 8, tzinfo=timezone.utc))
 
     def test_local_timezone_accepts_paths_names_and_bad_values(self):
         oslo = Path("/usr/share/zoneinfo/Europe/Oslo")
