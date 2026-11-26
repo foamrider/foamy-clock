@@ -36,6 +36,10 @@ MAX_QUERY_DAYS = 42
 MAX_EVENTS = 100
 MAX_SOURCES = 32
 MAX_OCCURRENCES = 2048
+# The lookups of moved occurrences have a bound of their own, so that
+# MAX_OCCURRENCES still counts the expansion only: the components they read
+# per calendar, each lookup counting one more.
+MAX_LOOKUP_COMPONENTS = 4096
 MAX_RESPONSE_BYTES = 256 * 1024
 MAX_MONTH_EVENTS = 1000
 MAX_MONTH_BYTES = 2 * 1024 * 1024
@@ -223,33 +227,52 @@ class MonthBuilder:
         return self.payload
 
 
-def component_time(when: Any, client: Any, default_timezone: Any) -> int | str:
-    """An ECalComponentDateTime as an instant, a DATE as its ISO date.
+def master_occurrence(component: Any, start: int | str, ecal: Any) -> bool:
+    """Whether libecal yielded `component` (starting at `start`, an instant or
+    an ISO date) as one of a recurring master's occurrences: the only kind an
+    occurrence moved elsewhere leaves behind.
+
+    libecal gives each of them its start as RECURRENCE-ID, in UTC (an all-day
+    one: its date). A detached instance keeps its own: one placed here from
+    another time is never dropped, also when it still carries the rule.
+    """
+    if not ecal.util_component_has_recurrences(component):
+        return False
+    recurrence = component.get_recurrenceid()
+    if recurrence.is_null_time():
+        return True
+    if recurrence.is_date():
+        return ical_date(recurrence).isoformat() == start
+    return recurrence.is_utc() and unix_timestamp(recurrence, None) == start
+
+
+def component_time(when: Any, client: Any, default_timezone: Any, ecal: Any) -> int | str:
+    """An ECalComponentDateTime as an instant, a DATE as its ISO date, read as
+    libecal's expansion reads the occurrences it is compared with.
 
     libecal leaves a value written with a TZID without a zone (libical knows
-    only its built-in zones), so the TZID is resolved through the calendar, as
-    EDS resolves it for the occurrences it expands. Only a floating time is
-    read in the default zone; a TZID the calendar cannot resolve raises.
+    only its built-in zones), so the TZID goes through the resolver the
+    expansion uses (ECal.Client.tzlookup_cb: the calendar's zones, then the
+    built-in ones). Like a floating time, a TZID it cannot resolve is read in
+    the default zone, as the expansion reads it.
     """
     value = when.get_value()
     if value.is_date():
         return ical_date(value).isoformat()
     zone = value.get_timezone()
     if zone is None and when.get_tzid():
-        _, zone = client.get_timezone_sync(when.get_tzid(), None)
-        if zone is None:
-            raise LookupError("the calendar has no such time zone")
+        zone = ecal.Client.tzlookup_cb(when.get_tzid(), client, None)
     return unix_timestamp(value, zone or default_timezone or client.get_default_timezone())
 
 
-def detached_recurrences(client: Any, uid: str, budget: int, default_timezone: Any) -> tuple[set, int, bool]:
+def detached_recurrences(client: Any, uid: str, budget: int, default_timezone: Any, ecal: Any) -> tuple[set, int, bool]:
     """The RECURRENCE-IDs of a recurring event's moved occurrences, as instants
-    (all-day ones as ISO dates); the occurrences spent, the lookup and each
-    component read counting one; and whether it all fitted in `budget`.
+    (all-day ones as ISO dates); the components spent, the lookup counting
+    one; and whether they all fitted in `budget`.
 
     A detached instance whose own start is its RECURRENCE-ID was edited in
-    place (renamed): libecal shows it at that time, so it is not a moved
-    occurrence, also when it still carries the series' rule.
+    place (renamed), and one without a start the expansion does not place:
+    neither moved its occurrence.
     """
     if budget < 1:
         return set(), 0, False
@@ -260,13 +283,37 @@ def detached_recurrences(client: Any, uid: str, budget: int, default_timezone: A
         spent += 1
         if spent > budget:
             return recurrences, spent, False
-        recurid = component.get_recurid()
-        if recurid is None:
+        recurid, start = component.get_recurid(), component.get_dtstart()
+        if recurid is None or start is None:
             continue
-        recurrence = component_time(recurid.get_datetime(), client, default_timezone)
-        if component_time(component.get_dtstart(), client, default_timezone) != recurrence:
+        recurrence = component_time(recurid.get_datetime(), client, default_timezone, ecal)
+        if component_time(start, client, default_timezone, ecal) != recurrence:
             recurrences.add(recurrence)
     return recurrences, spent, True
+
+
+def moved_occurrences(client: Any, found: list, default_timezone: Any, ecal: Any) -> tuple[set, list]:
+    """(UID, start) of each master occurrence in `found` that was moved
+    elsewhere, and the dates of the events left unchecked.
+
+    libecal matches a detached instance to its master's occurrence only when
+    the instance's own time lies in the asked range, so an occurrence moved
+    out of the range still shows on its old date. One lookup per recurring
+    event, after the expansion, finds the detached instances wherever they
+    lie. Once the lookups have read MAX_LOOKUP_COMPONENTS, the events not
+    yet checked are shown as they are, their dates marked incomplete.
+    """
+    moved = set()
+    budget = MAX_LOOKUP_COMPONENTS
+    events = list(dict.fromkeys(uid for *_, uid, _ in found if uid))
+    for position, uid in enumerate(events):
+        recurrences, spent, complete = detached_recurrences(client, uid, budget, default_timezone, ecal)
+        budget -= spent
+        moved.update((uid, recurrence) for recurrence in recurrences)
+        if not complete:
+            unchecked = set(events[position:])
+            return moved, [key for _, keys, _, series, _ in found if series in unchecked for key in keys]
+    return moved, []
 
 
 def fetch_source_events(
@@ -283,9 +330,10 @@ def fetch_source_events(
     visited = 0
     callback_failed = False
     # The occurrences to show, in libecal's order: (event, dates, shortened,
-    # the UID of its recurring master or None, the instant or date it recurs on).
+    # the UID when it is one of a recurring master's occurrences, else None,
+    # and its start as an instant or ISO date).
     found = []
-    # (UID, instant or date) of each occurrence that was moved elsewhere.
+    # (UID, instant or date) of each master occurrence that was moved elsewhere.
     moved = set()
     try:
         client = ecal.Client.connect_sync(source, ecal.ClientSourceType.EVENTS, 2, None)
@@ -338,10 +386,10 @@ def fetch_source_events(
                     "color": source_color,
                 }
             )
-            # An occurrence of a recurring master starts at its RECURRENCE-ID.
             uid = component.get_uid()
-            series = uid if uid and ecal.util_component_has_recurrences(component) else None
-            found.append((event, matching, shortened, series, start.isoformat() if event["allDay"] else start))
+            key = start.isoformat() if event["allDay"] else start
+            series = uid if uid and master_occurrence(component, key, ecal) else None
+            found.append((event, matching, shortened, series, key))
             return True
 
         def add_instance(*args):
@@ -356,20 +404,9 @@ def fetch_source_events(
         client.generate_instances_sync(
             int(range_start.timestamp()), int(range_end.timestamp()), None, add_instance, None
         )
-        # libecal matches a detached instance to its master's occurrence only
-        # when the instance's own time lies in the asked range, so an
-        # occurrence moved out of the range still shows on its old date. One
-        # lookup per recurring event, after the expansion and within its
-        # occurrence budget, finds the detached instances wherever they lie.
-        for uid in dict.fromkeys(series for *_, series, _ in found if series):
-            recurrences, spent, complete = detached_recurrences(
-                client, uid, MAX_OCCURRENCES - visited, default_timezone
-            )
-            visited += spent
-            moved.update((uid, recurrence) for recurrence in recurrences)
-            if not complete:
-                month.incomplete(month.payload["dates"])
-                break
+        # After the expansion, not inside its callback.
+        moved, unchecked = moved_occurrences(client, found, default_timezone, ecal)
+        month.incomplete(unchecked)
     except Exception:
         callback_failed = True
     for event, keys, shortened, series, recurrence in found:
