@@ -50,10 +50,6 @@ Panel {
   }
   function closeSettings() {
     settingsState.hide()
-    Qt.callLater(function () {
-      if (popup.bodyItem)
-        popup.bodyItem.forceActiveFocus()
-    })
   }
   onOpenedChanged: if (!opened)
     launchError = ""

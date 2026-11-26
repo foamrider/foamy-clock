@@ -29,7 +29,8 @@ import "plugin/kit/FoamyIpcResolver.js" as IpcResolver
 //     refused custom date locale, the bar format previews, the refresh
 //     dropdown saves and follows the setting, a refused pick in each
 //     dropdown gives way to the saved value at once, the agenda switch, an
-//     invalid value, Esc;
+//     invalid value, a real Esc back from Settings and another closing the
+//     popup, also when it was closed on Settings and opened again;
 // 10. the calendar shortcut: a hostile stored name, a missing app, a present
 //     app (fake omarchy-cmd-present and omarchy-launch-or-focus);
 // 11. every helper run's arguments were accepted, and the first background
@@ -92,6 +93,14 @@ ShellRoot {
     implicitWidth: 1920
     implicitHeight: 1080
     color: "black"
+    // The screen the popups draw into, as the host's bar window is, so an
+    // open popup has this window's keys and a real Esc reaches it.
+    ScreenSim {}
+    Item {
+      TestEvent {
+        id: barKeys
+      }
+    }
     Row {
       Repeater {
         id: bars
@@ -150,8 +159,7 @@ ShellRoot {
     }
   }
 
-  // The agenda alone, for the checks that hover it: offscreen the bar popup
-  // gets no window, so its tooltips never open. A screen wide, as the
+  // The agenda alone, for the checks that hover it. A screen wide, as the
   // panel's own window is.
   FloatingWindow {
     id: agendaWindow
@@ -634,8 +642,7 @@ ShellRoot {
   }
   // A typed calendar app the schema refuses stays in the field on Enter and
   // gives way to the saved name when the focus moves on; only a valid one is
-  // saved. Offscreen, the bar popup gets no window and so no keyboard focus:
-  // the page is checked in a window of its own (focusWindow).
+  // saved. The page is checked in a window of its own (focusWindow).
   function calendarAppDraftCheck() {
     var app = find(focusPage, it => it.saveFailed !== undefined && it.label === Kit.FoamyI18n.t("Calendar app"))
     focusWindow.visible = true
@@ -840,21 +847,72 @@ ShellRoot {
       eq(widget(0).settingsError, texts.notAllowed, "an invalid value is refused")
       eq(mock.saved.length, saves, "and nothing is written")
       eq(view.settingsError, texts.notAllowed, "the open page shows the error")
-      view.closeRequested()
+      escapeCheck()
+    })
+  }
+
+  // Whether the item that has the keys in `item`'s window is `item` or
+  // inside it.
+  function keysIn(item) {
+    var window = item ? item.Window.window : null
+    for (var at = window ? window.activeFocusItem : null; at; at = at.parent)
+      if (at === item)
+        return true
+    return false
+  }
+  // Esc as a real key, through the window the popups draw into. On Settings
+  // it goes back to the calendar and keeps the popup open; on the calendar
+  // it closes the popup. Were the keys left on the hidden settings page, the
+  // second Esc would go to its Back and the popup would stay open.
+  function escapeCheck() {
+    var view = panel(0).popup.bodyItem
+    var page = find(view, it => it.formatsOpen !== undefined)
+    view.Window.window.requestActivate()
+    step(function () {
+      return view.Window.window.active && keysIn(page)
+    }, "the settings page has the keys", function () {
+      barKeys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1)
       step(function () {
         return !panel(0).editingSettings
       }, "Esc leaves Settings", function () {
         eq(widget(0).opened, true, "and keeps the popup open")
-        view.closeRequested()
         step(function () {
-          return !widget(0).opened
-        }, "a second Esc closes the popup", function () {
-          widget(0).open()
+          return keysIn(view) && !keysIn(page)
+        }, "the calendar has the keys again", function () {
+          barKeys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1)
           step(function () {
-            return widget(0).opened
-          }, "the popup opens again", function () {
-            eq(panel(0).editingSettings, false, "on the calendar, not Settings")
-            hostileCalendar()
+            return !widget(0).opened
+          }, "a second Esc closes the popup", closedOnSettingsCheck)
+        })
+      })
+    })
+  }
+  // The popup closes while Settings shows. Opened again, it is on the
+  // calendar, which has the keys, and a real Esc closes it.
+  function closedOnSettingsCheck() {
+    var view = panel(0).popup.bodyItem
+    var page = find(view, it => it.formatsOpen !== undefined)
+    widget(0).openSettings()
+    step(function () {
+      return widget(0).opened && panel(0).editingSettings && keysIn(page)
+    }, "Settings opens with the keys on its page", function () {
+      widget(0).close()
+      step(function () {
+        return !widget(0).opened
+      }, "the popup closes on Settings", function () {
+        widget(0).open()
+        step(function () {
+          return widget(0).opened && keysIn(view) && !keysIn(page)
+        }, "opened again, the calendar has the keys", function () {
+          eq(panel(0).editingSettings, false, "on the calendar, not Settings")
+          barKeys.keyClick(Qt.Key_Escape, Qt.NoModifier, -1)
+          step(function () {
+            return !widget(0).opened
+          }, "Esc closes the popup that was closed on Settings", function () {
+            widget(0).open()
+            step(function () {
+              return widget(0).opened
+            }, "the popup opens again", hostileCalendar)
           })
         })
       })
