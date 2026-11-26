@@ -223,6 +223,23 @@ class MonthBuilder:
         return self.payload
 
 
+def detached_recurrences(client: Any, uid: str, default_timezone: Any) -> tuple[set, int]:
+    """The RECURRENCE-IDs of a recurring event's detached instances, as
+    instants (all-day ones as ISO dates), and how many components the lookup
+    returned: the event and each of its detached instances."""
+    _, components = client.get_objects_for_uid_sync(uid, None)
+    recurrences = set()
+    for component in components:
+        recurrence = component.get_icalcomponent().get_recurrenceid()
+        if recurrence.is_null_time():
+            continue
+        if recurrence.is_date():
+            recurrences.add(ical_date(recurrence).isoformat())
+        else:
+            recurrences.add(unix_timestamp(recurrence, default_timezone or client.get_default_timezone()))
+    return recurrences, len(components)
+
+
 def fetch_source_events(
     source: Any,
     source_name: str,
@@ -236,6 +253,11 @@ def fetch_source_events(
     month = MonthBuilder(range_start.date(), range_end.date())
     visited = 0
     callback_failed = False
+    # The occurrences to show, in libecal's order: (event, dates, shortened,
+    # the UID of its recurring master or None, the instant or date it recurs on).
+    found = []
+    # (UID, instant or date) of each occurrence that was moved elsewhere.
+    moved = set()
     try:
         client = ecal.Client.connect_sync(source, ecal.ClientSourceType.EVENTS, 2, None)
         # Floating DATE-TIMEs (no TZID, no Z) resolve with the client's default
@@ -287,7 +309,10 @@ def fetch_source_events(
                     "color": source_color,
                 }
             )
-            month.add(event, matching, shortened)
+            # An occurrence of a recurring master starts at its RECURRENCE-ID.
+            uid = component.get_uid()
+            series = uid if uid and ecal.util_component_has_recurrences(component) else None
+            found.append((event, matching, shortened, series, start.isoformat() if event["allDay"] else start))
             return True
 
         def add_instance(*args):
@@ -302,8 +327,24 @@ def fetch_source_events(
         client.generate_instances_sync(
             int(range_start.timestamp()), int(range_end.timestamp()), None, add_instance, None
         )
+        # libecal matches a detached instance to its master's occurrence only
+        # when the instance's own time lies in the asked range, so an
+        # occurrence moved out of the range still shows on its old date. One
+        # lookup per recurring event, after the expansion and within its
+        # occurrence budget, finds the detached instances wherever they lie.
+        for uid in dict.fromkeys(series for *_, series, _ in found if series):
+            visited += 1
+            if visited > MAX_OCCURRENCES:
+                month.incomplete(month.payload["dates"])
+                break
+            recurrences, size = detached_recurrences(client, uid, default_timezone)
+            visited += size
+            moved.update((uid, recurrence) for recurrence in recurrences)
     except Exception:
         callback_failed = True
+    for event, keys, shortened, series, recurrence in found:
+        if (series, recurrence) not in moved:
+            month.add(event, keys, shortened)
     if callback_failed:
         month.incomplete(month.payload["dates"])
     return month.finish(), "unavailable" if callback_failed else ""

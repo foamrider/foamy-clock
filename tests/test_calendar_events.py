@@ -20,6 +20,57 @@ SPEC = importlib.util.spec_from_file_location("calendar_events", MODULE_PATH)
 assert SPEC and SPEC.loader
 CALENDAR_EVENTS = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(CALENDAR_EVENTS)
+OSLO = ZoneInfo("Europe/Oslo")
+
+
+class FakeDate:
+    """An ICalGLib DATE value."""
+
+    def __init__(self, day):
+        self.day = day
+
+    def is_null_time(self):
+        return False
+
+    def is_date(self):
+        return True
+
+    def get_year(self):
+        return self.day.year
+
+    def get_month(self):
+        return self.day.month
+
+    def get_day(self):
+        return self.day.day
+
+
+class FakeDateTime:
+    """An ICalGLib DATE-TIME: a wall-clock time read in its zone (None: floating)."""
+
+    def __init__(self, wall, zone):
+        self.wall = wall
+        self.zone = zone
+
+    def is_null_time(self):
+        return False
+
+    def is_date(self):
+        return False
+
+    def get_timezone(self):
+        return self.zone
+
+    def as_timet_with_zone(self, zone):
+        return int(self.wall.replace(tzinfo=zone).timestamp())
+
+
+def november(day, hour=None):
+    """An occurrence's start and end on that day of November 2026: an hour
+    from `hour` in Oslo, or the whole day."""
+    if hour is None:
+        return FakeDate(date(2026, 11, day)), FakeDate(date(2026, 11, day + 1))
+    return FakeDateTime(datetime(2026, 11, day, hour), OSLO), FakeDateTime(datetime(2026, 11, day, hour + 1), OSLO)
 
 
 class CalendarEventsTest(unittest.TestCase):
@@ -141,7 +192,9 @@ class CalendarEventsTest(unittest.TestCase):
 
         client = SimpleNamespace(generate_instances_sync=generate)
         ecal = SimpleNamespace(
-            Client=SimpleNamespace(connect_sync=lambda *_: client), ClientSourceType=SimpleNamespace(EVENTS=1)
+            Client=SimpleNamespace(connect_sync=lambda *_: client),
+            ClientSourceType=SimpleNamespace(EVENTS=1),
+            util_component_has_recurrences=lambda _component: False,
         )
         ical = SimpleNamespace(PropertyStatus=SimpleNamespace(CANCELLED="cancelled"))
         return CALENDAR_EVENTS.fetch_source_events(
@@ -656,7 +709,11 @@ class CalendarEventsTest(unittest.TestCase):
                 ),
             )
 
-        ecal = SimpleNamespace(Client=SimpleNamespace(connect_sync=connect), ClientSourceType=SimpleNamespace(EVENTS=1))
+        ecal = SimpleNamespace(
+            Client=SimpleNamespace(connect_sync=connect),
+            ClientSourceType=SimpleNamespace(EVENTS=1),
+            util_component_has_recurrences=lambda _component: False,
+        )
         ical = SimpleNamespace(
             PropertyStatus=SimpleNamespace(CANCELLED="cancelled"),
             Timezone=SimpleNamespace(get_builtin_timezone=lambda _key: None),
@@ -908,7 +965,9 @@ class CalendarEventsTest(unittest.TestCase):
             ),
         )
         ecal = SimpleNamespace(
-            Client=SimpleNamespace(connect_sync=lambda *_: client), ClientSourceType=SimpleNamespace(EVENTS=1)
+            Client=SimpleNamespace(connect_sync=lambda *_: client),
+            ClientSourceType=SimpleNamespace(EVENTS=1),
+            util_component_has_recurrences=lambda _component: False,
         )
         ical = SimpleNamespace(PropertyStatus=SimpleNamespace(CANCELLED="cancelled"))
         start = datetime(2026, 10, 30, tzinfo=ZoneInfo("Europe/Oslo"))
@@ -919,6 +978,122 @@ class CalendarEventsTest(unittest.TestCase):
         self.assertEqual(calls, [oslo])
         self.assertEqual(month["dates"]["2026-10-30"]["events"], [0])
         self.assertEqual(datetime.fromtimestamp(month["events"][0]["start"], ZoneInfo("Europe/Oslo")).hour, 9)
+
+    def fetch_series(self, occurrences, detached, cancelled=0, failing_lookup=False):
+        """fetch_source_events over libecal as EDS 3.62 behaves for an
+        occurrence moved out of the asked range: generate_instances_sync
+        still yields the master's occurrence on the old date, and only the
+        lookup by UID returns the detached instance.
+
+        `occurrences` are (uid, recurring, start, end) in the order libecal
+        yields them, after `cancelled` cancelled ones; `detached` maps a UID to
+        the RECURRENCE-IDs of its detached instances. Returns the month, the
+        error and the UIDs looked up.
+        """
+        lookups = []
+        generating = False
+
+        def generate(_start, _end, _cancellable, callback, _data):
+            nonlocal generating
+            generating = True
+            try:
+                for _ in range(cancelled):
+                    if not callback(SimpleNamespace(get_status=lambda: "cancelled"), None, None, None, None):
+                        return
+                for uid, recurring, start, end in occurrences:
+                    component = SimpleNamespace(
+                        get_status=lambda: "confirmed",
+                        get_summary=uid.title,
+                        get_location=lambda: "",
+                        get_uid=lambda uid=uid: uid,
+                        recurring=recurring,
+                    )
+                    if not callback(component, start, end, None, None):
+                        return
+            finally:
+                generating = False
+
+        def objects_for_uid(uid, _cancellable):
+            self.assertFalse(generating, "a lookup inside generate_instances_sync's callback")
+            lookups.append(uid)
+            if failing_lookup:
+                raise OSError("the calendar backend went away")
+            master = SimpleNamespace(is_null_time=lambda: True)
+            return True, [
+                SimpleNamespace(get_icalcomponent=lambda rid=rid: SimpleNamespace(get_recurrenceid=lambda: rid))
+                for rid in [master, *detached.get(uid, [])]
+            ]
+
+        client = SimpleNamespace(
+            set_default_timezone=lambda _zone: None,
+            get_default_timezone=lambda: OSLO,
+            generate_instances_sync=generate,
+            get_objects_for_uid_sync=objects_for_uid,
+        )
+        ecal = SimpleNamespace(
+            Client=SimpleNamespace(connect_sync=lambda *_: client),
+            ClientSourceType=SimpleNamespace(EVENTS=1),
+            util_component_has_recurrences=lambda component: component.recurring,
+        )
+        ical = SimpleNamespace(PropertyStatus=SimpleNamespace(CANCELLED="cancelled"))
+        start = datetime(2026, 10, 26, tzinfo=OSLO)
+        month, error = CALENDAR_EVENTS.fetch_source_events(
+            SimpleNamespace(get_uid=lambda: "calendar"), "Work", "", start, start + timedelta(days=42), ecal, ical, OSLO
+        )
+        return month, error, lookups
+
+    def titles(self, month, key):
+        return sorted(month["events"][index]["title"] for index in month["dates"][key]["events"])
+
+    def test_an_occurrence_moved_out_of_the_view_leaves_its_old_date(self):
+        """A weekly event's 27 November occurrence moved to 15 January (a
+        detached instance) shows on neither date of the November view. Its
+        RECURRENCE-ID is compared with the occurrence as an instant, an all-day
+        one by its date; one lookup per recurring event, none for a single one."""
+        rows = [
+            # name, the hour of the series (None: all day), the detached
+            # instance's RECURRENCE-ID, whether 27 November keeps the series
+            ("a time in the event's zone", 10, FakeDateTime(datetime(2026, 11, 27, 10), OSLO), False),
+            ("the same instant in UTC", 10, FakeDateTime(datetime(2026, 11, 27, 9), timezone.utc), False),
+            ("an all-day date", None, FakeDate(date(2026, 11, 27)), False),
+            ("10:00 in UTC, an hour later", 10, FakeDateTime(datetime(2026, 11, 27, 10), timezone.utc), True),
+            ("another date", 10, FakeDateTime(datetime(2026, 12, 25, 10), OSLO), True),
+        ]
+        for name, hour, recurrence_id, kept in rows:
+            with self.subTest(name):
+                occurrences = [
+                    ("weekly", True, *november(20, hour)),
+                    ("weekly", True, *november(27, hour)),
+                    ("lunch", False, *november(27, 12)),
+                ]
+                month, error, lookups = self.fetch_series(occurrences, {"weekly": [recurrence_id]})
+                self.assertEqual(self.titles(month, "2026-11-20"), ["Weekly"])
+                self.assertEqual(self.titles(month, "2026-11-27"), ["Lunch", "Weekly"] if kept else ["Lunch"])
+                self.assertEqual(lookups, ["weekly"])
+                self.assertEqual((month["state"], month["complete"], error), ("ok", True, ""))
+
+    def test_a_failed_lookup_of_moved_occurrences_is_never_a_full_result(self):
+        month, error, lookups = self.fetch_series([("weekly", True, *november(27, 10))], {}, failing_lookup=True)
+        self.assertEqual(lookups, ["weekly"])
+        self.assertEqual(error, "unavailable")
+        self.assertEqual(self.titles(month, "2026-11-27"), ["Weekly"])
+        self.assertEqual(month["dates"]["2026-11-27"]["state"], "partial")
+        self.assertFalse(month["complete"])
+
+    def test_moved_occurrence_lookups_count_in_the_occurrence_budget(self):
+        """Each lookup, and each instance it returns, counts as an occurrence:
+        once MAX_OCCURRENCES is spent, the other recurring events go unchecked
+        and the month says it is incomplete."""
+        moved = [FakeDateTime(datetime(2026, 12, day, 10), OSLO) for day in range(1, 10)]
+        month, error, lookups = self.fetch_series(
+            [("first", True, *november(20, 10)), ("second", True, *november(20, 12))],
+            {"first": moved},
+            cancelled=CALENDAR_EVENTS.MAX_OCCURRENCES - 4,
+        )
+        self.assertEqual(lookups, ["first"])
+        self.assertEqual(self.titles(month, "2026-11-20"), ["First", "Second"])
+        self.assertFalse(month["complete"])
+        self.assertEqual(error, "")
 
     def test_ical_timezone_maps_iana_keys_only(self):
         lookups = []
