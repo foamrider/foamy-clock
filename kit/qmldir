@@ -1,4 +1,4 @@
-# foamy-kit 0.15.2 1c1337833fbf28f1f64e2e29d9438d1c45e89719a033d74d5392634a8b528ccd — do not edit; change foamy-kit and run sync
+# foamy-kit 0.16.0 615e6ce21a945aaeb6bcf22cb8d5186059ee8e9b7d765e309c23430ed85cbffd — do not edit; change foamy-kit and run sync
 FoamyAction 1.0 FoamyAction.qml
 FoamyClickAway 1.0 FoamyClickAway.qml
 FoamyClipboard 1.0 FoamyClipboard.qml
@@ -29,6 +29,7 @@ FoamySettingsState 1.0 FoamySettingsState.qml
 singleton FoamyShared 1.0 FoamyShared.qml
 singleton FoamyStyle 1.0 FoamyStyle.qml
 FoamyTextSettingField 1.0 FoamyTextSettingField.qml
+FoamyTitleAction 1.0 FoamyTitleAction.qml
 FoamyToggle 1.0 FoamyToggle.qml
 FoamyWallClock 1.0 FoamyWallClock.qml
 FoamyWheelScroll 1.0 FoamyWheelScroll.qml
