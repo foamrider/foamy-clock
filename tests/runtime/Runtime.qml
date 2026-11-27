@@ -511,13 +511,21 @@ ShellRoot {
     var view = panel(1).popup.bodyItem
     eq(footer(view).status, texts.unavailable, "the footer says the calendar is unavailable")
     eq(view.agendaMessageText(), texts.noData, "the agenda says so too")
-    // The error reads at 4.5:1 on the popup surface; tests/runtime.py runs
-    // the Norwegian case in a dark theme with a dim red (2.70:1 raw).
+    // The error reads at 4.5:1 on the drawn popup card; tests/runtime.py runs
+    // the Norwegian case in a dark theme with a dim red (2.70:1 raw) and sets
+    // FOAMY_DIM_RED there, where the raw red must not read, or this check
+    // could not fail.
     var agendaError = find(view, it => it.visible && it.textFormat !== undefined && it.text === texts.noData)
+    var card = panel(1).popup.cardItem
     check(agendaError !== null, "the agenda error is shown")
-    if (agendaError) {
-      var ratio = Kit.FoamyPalette.contrastRatio(agendaError.color, Kit.FoamyPalette.background)
-      check(ratio >= 4.5, "the agenda error " + agendaError.color + " reads " + ratio.toFixed(2) + ":1 (4.5:1 needed)")
+    check(card !== null, "the popup's card is drawn")
+    if (agendaError && card) {
+      var ratio = Kit.FoamyPalette.contrastRatio(agendaError.color, card.color)
+      check(ratio >= 4.5, "the agenda error " + agendaError.color + " reads " + ratio.toFixed(2) + ":1 on " + card.color + " (4.5:1 needed)")
+      if (Quickshell.env("FOAMY_DIM_RED") === "1") {
+        var raw = Kit.FoamyPalette.contrastRatio(Kit.FoamyPalette.error, card.color)
+        check(raw < 4.5, "dim-red theme: the raw red " + Kit.FoamyPalette.error + " reads " + raw.toFixed(2) + ":1 on " + card.color + ", so the agenda error is not tested")
+      }
     }
     eq(view.agendaCountText(), "", "no count for an error")
     check(!!service.monthIsCurrent(), "the helper's error month was committed")
