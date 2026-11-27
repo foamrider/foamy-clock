@@ -629,7 +629,7 @@ PanelKeyCatcher {
               wrapMode: Text.WordWrap
               horizontalAlignment: Text.AlignLeft
               text: service.agendaState === "loading" ? FoamyI18n.t("Loading events…") : service.agendaState === "error" || service.agendaState === "partial" ? root.agendaMessageText() : service.selectedCalendars > 0 ? FoamyI18n.t("No events on this date") : FoamyI18n.t("No calendars selected")
-              color: service.agendaState === "error" ? Commons.Color.urgent : FoamyPalette.mutedText
+              color: service.agendaState === "error" ? FoamyPalette.onSurface(FoamyPalette.error) : FoamyPalette.mutedText
               font.pixelSize: FoamyStyle.font.bodySmall
               Accessible.role: service.agendaState === "error" ? Accessible.AlertMessage : Accessible.StaticText
             }

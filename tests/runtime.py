@@ -189,10 +189,12 @@ def wait_clear_of_midnight(now=None):
     return left + 1
 
 
-def run(host, language):
+def run(host, language, theme="dark"):
     wait_clear_of_midnight()
     shell = (Path(__file__).parent / "runtime/Runtime.qml").read_text()
-    test = harness.Run(host, shell, plugin=ROOT, language=language, prefix="foamy-clock-runtime-", fakebin=FAKEBIN)
+    test = harness.Run(
+        host, shell, plugin=ROOT, language=language, theme=theme, prefix="foamy-clock-runtime-", fakebin=FAKEBIN
+    )
     test.env["FOAMY_LANG"] = language
     fake_gi = test.base / "fakegi" / "gi"
     fake_gi.mkdir(parents=True)
@@ -327,8 +329,11 @@ def main():
     ok = teardown("4.5")
     ok &= crash("4.5")
     ok &= startup("4.5")
+    # Norwegian runs in the kit's dark theme with a dim red: the agenda
+    # error must lighten to read.
+    themes = {"en": "dark", "no": str(KIT / "tests/fixtures/themes/dim-red.toml")}
     for language in [args.language] if args.language else ["en", "no"]:
-        ok &= run("4.5", language)
+        ok &= run("4.5", language, themes[language])
     return 0 if ok else 1
 
 
