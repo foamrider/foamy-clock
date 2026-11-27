@@ -47,7 +47,7 @@ ClockView.qml: missing-property: Member "hairline" not found on type "QObject" |
 ClockView.qml: unqualified: Unqualified access | Accessible.name: root.displayLocale.toString(new Date(modelData.year, modelData.month, modelData.day), Locale.LongFormat)
 ClockView.qml: unqualified: Unqualified access | Accessible.role: service.agendaState === "error" ? Accessible.AlertMessage : Accessible.StaticText
 ClockView.qml: unqualified: Unqualified access | color: modelData.inMonth ? FoamyPalette.text : FoamyPalette.mutedText
-ClockView.qml: unqualified: Unqualified access | color: service.agendaState === "error" ? Commons.Color.urgent : FoamyPalette.mutedText
+ClockView.qml: unqualified: Unqualified access | color: service.agendaState === "error" ? FoamyPalette.onSurface(FoamyPalette.error) : FoamyPalette.mutedText
 ClockView.qml: unqualified: Unqualified access | enabled: !service.viewingCurrentMonth || !service.selectedDateIsToday
 ClockView.qml: unqualified: Unqualified access | enabled: !service.viewingCurrentMonth || !service.selectedDateIsToday
 ClockView.qml: unqualified: Unqualified access | height: root.cellHeight
